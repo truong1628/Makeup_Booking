@@ -1,0 +1,338 @@
+{
+  "info": {
+    "name": "Makeup Booking API",
+    "description": "Bộ API kiểm thử Module Xác thực (Auth) & Hệ thống Makeup Booking",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/demo/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "demo", "health"]
+        }
+      }
+    },
+    {
+      "name": "1. Đăng ký Khách hàng (ROLE_CUSTOMER)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"Trần Thị Bích\",\n  \"email\": \"bich.tran@gmail.com\",\n  \"phone\": \"0933221100\",\n  \"password\": \"123456\",\n  \"role\": \"ROLE_CUSTOMER\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/auth/register",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "2. Đăng ký Trùng Email (Test 409 Conflict)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"Trần Thị Bích\",\n  \"email\": \"bich.tran@gmail.com\",\n  \"phone\": \"0933221100\",\n  \"password\": \"123456\",\n  \"role\": \"ROLE_CUSTOMER\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/auth/register",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "3. Đăng ký Thợ Trang Điểm (ROLE_ARTIST)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"Lê Thu Hà\",\n  \"email\": \"thuha.artist@gmail.com\",\n  \"phone\": \"0988112233\",\n  \"password\": \"123456\",\n  \"role\": \"ROLE_ARTIST\",\n  \"experience\": \"6 năm kinh nghiệm\",\n  \"specialties\": \"Trang điểm cô dâu tone Tây, dự tiệc sang trọng\",\n  \"workingHours\": \"07:00 - 21:00\",\n  \"workingDays\": \"Thứ 2 - Chủ Nhật\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/auth/register",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "4. Đăng nhập Đúng Mật khẩu (Lấy JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"bich.tran@gmail.com\",\n  \"password\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/auth/login",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "5. Đăng nhập Sai Mật khẩu (Test 401)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"bich.tran@gmail.com\",\n  \"password\": \"SaiPass123\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/auth/login",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "6. Xem Profile Bằng Token JWT (/auth/me)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <DÁN_TOKEN_JWT_VÀO_ĐÂY>" }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/auth/me",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "auth", "me"]
+        }
+      }
+    },
+    {
+      "name": "7. Lấy Tất Cả Dịch Vụ Đang Active (GET /services)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/services",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "services"]
+        }
+      }
+    },
+    {
+      "name": "8. Lấy Danh Sách Gói Combo (GET /services/combos)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/services/combos",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "services", "combos"]
+        }
+      }
+    },
+    {
+      "name": "9. Tạo Dịch Vụ Đơn Lẻ (POST /services)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <DÁN_TOKEN_ADMIN_HOẶC_ARTIST_VÀO_ĐÂY>" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceName\": \"Trang điểm kỷ yếu nhóm (từ 5 bạn)\",\n  \"price\": 250000,\n  \"duration\": 45,\n  \"description\": \"Trang điểm tone nhẹ nhàng trong trẻo phù hợp áo dài trắng\",\n  \"image\": \"https://images.unsplash.com/photo-1512496015851-a90fb38ba796\",\n  \"isCombo\": false\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/services",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "services"]
+        }
+      }
+    },
+    {
+      "name": "10. Tạo Gói Combo Mới (POST /services)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <DÁN_TOKEN_ADMIN_HOẶC_ARTIST_VÀO_ĐÂY>" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceName\": \"Combo Dạ Tiệc VIP (Makeup + Tóc + Dán mi cao cấp)\",\n  \"price\": 990000,\n  \"duration\": 105,\n  \"description\": \"Gói khuyến mãi combo dành riêng cho dạ tiệc sang trọng\",\n  \"image\": \"https://images.unsplash.com/photo-1522337360788-8b13dee7a37e\",\n  \"isCombo\": true,\n  \"comboItems\": [\n    {\n      \"serviceId\": 1,\n      \"quantity\": 1\n    },\n    {\n      \"serviceId\": 3,\n      \"quantity\": 1\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/services",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "services"]
+        }
+      }
+    },
+    {
+      "name": "11. Xem Chi Tiết Gói Combo (GET /services/5)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/services/5",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "services", "5"]
+        }
+      }
+    },
+    {
+      "name": "12. Kiểm tra khả dụng của thợ (GET /bookings/check-availability)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/bookings/check-availability?artistId=1&date=2026-10-02&startTime=09:00:00&endTime=10:30:00",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "bookings", "check-availability"],
+          "query": [
+            { "key": "artistId", "value": "1" },
+            { "key": "date", "value": "2026-10-02" },
+            { "key": "startTime", "value": "09:00:00" },
+            { "key": "endTime", "value": "10:30:00" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "13. Tạo Đơn Đặt Lịch Studio - SINGLE (POST /bookings)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <DÁN_TOKEN_CUSTOMER_VÀO_ĐÂY>" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"bookingDate\": \"2026-10-02\",\n  \"bookingTime\": \"09:00:00\",\n  \"locationType\": \"STUDIO\",\n  \"executionMode\": \"SINGLE\",\n  \"items\": [\n    {\n      \"makeupServiceId\": 1,\n      \"makeupArtistId\": 1\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/bookings",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "bookings"]
+        }
+      }
+    },
+    {
+      "name": "14. Tạo Đơn Tại Nhà HOME + SEQUENTIAL (POST /bookings)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <DÁN_TOKEN_CUSTOMER_VÀO_ĐÂY>" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"bookingDate\": \"2026-10-02\",\n  \"bookingTime\": \"11:00:00\",\n  \"locationType\": \"HOME\",\n  \"executionMode\": \"SEQUENTIAL\",\n  \"addressInfo\": {\n    \"address\": \"Số 88 Phố Huế, Hai Bà Trưng, Hà Nội\",\n    \"distanceKm\": 8.5\n  },\n  \"items\": [\n    {\n      \"makeupServiceId\": 2,\n      \"makeupArtistId\": 1\n    },\n    {\n      \"makeupServiceId\": 3,\n      \"makeupArtistId\": 1\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/bookings",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "bookings"]
+        }
+      }
+    },
+    {
+      "name": "15. Tạo Đơn Đồng Thời PARALLEL Nhiều Thợ (POST /bookings)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <DÁN_TOKEN_CUSTOMER_VÀO_ĐÂY>" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"bookingDate\": \"2026-10-02\",\n  \"bookingTime\": \"14:00:00\",\n  \"locationType\": \"STUDIO\",\n  \"executionMode\": \"PARALLEL\",\n  \"items\": [\n    {\n      \"makeupServiceId\": 1,\n      \"makeupArtistId\": 1\n    },\n    {\n      \"makeupServiceId\": 4,\n      \"makeupArtistId\": 2\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/bookings",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "bookings"]
+        }
+      }
+    },
+    {
+      "name": "16. Khách hàng xem lịch hẹn của mình (GET /bookings/my-bookings)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <DÁN_TOKEN_CUSTOMER_VÀO_ĐÂY>" }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/bookings/my-bookings",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "bookings", "my-bookings"]
+        }
+      }
+    },
+    {
+      "name": "17. Xem Chi Tiết Đơn Hẹn (GET /bookings/:id)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <DÁN_TOKEN_CUSTOMER_VÀO_ĐÂY>" }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/bookings/1",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "bookings", "1"]
+        }
+      }
+    }
+  ]
+}
