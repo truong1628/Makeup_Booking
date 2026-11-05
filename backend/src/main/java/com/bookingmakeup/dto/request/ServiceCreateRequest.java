@@ -1,6 +1,7 @@
 package com.bookingmakeup.dto.request;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -27,6 +28,7 @@ public class ServiceCreateRequest {
     @PositiveOrZero(message = "Giá dịch vụ phải lớn hơn hoặc bằng 0")
     private BigDecimal price;
 
+    @Min(value = 1, message = "Thời lượng thực hiện phải từ 1 phút trở lên")
     private Integer duration;
 
     private String description;
@@ -35,6 +37,8 @@ public class ServiceCreateRequest {
 
     @Builder.Default
     private Boolean isCombo = false;
+
+    private Long categoryId;
 
     private Boolean active;
 

@@ -34,15 +34,23 @@ public class BookingResponse {
     private BigDecimal servicesPrice;
     private BigDecimal travelFee;
     private BigDecimal surcharge;
+    private BigDecimal discountAmount;
+    private Long voucherId;
+    private String voucherCode;
     private BigDecimal totalPrice;
     private BigDecimal depositAmount;
     private String address;
     private BigDecimal distanceKm;
     private List<BookingItemResponse> items;
+    private Long layoutId;
+    private String layoutCode;
     private String layout;
     private String customerImage;
     private String notes;
     private String paymentMethod;
     private String paymentStatus;
+    private BigDecimal totalPaid;
+    private BigDecimal remainingToCollect;
+    private Boolean isFullyPaid;
     private LocalDateTime createdAt;
 }

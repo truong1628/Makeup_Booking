@@ -31,7 +31,7 @@ public class Portfolio extends BaseEntity {
     @Column(name = "image_url", columnDefinition = "LONGTEXT", nullable = false)
     private String imageUrl;
 
-    @Column(name = "additional_images", columnDefinition = "TEXT")
+    @Column(name = "additional_images", columnDefinition = "LONGTEXT")
     private String additionalImages;
 
     @Column(name = "category_name", length = 100)
@@ -43,4 +43,8 @@ public class Portfolio extends BaseEntity {
     @Column(name = "view_count", nullable = false)
     @Builder.Default
     private Integer viewCount = 0;
+
+    @OneToMany(mappedBy = "portfolio", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private java.util.List<PortfolioImage> images = new java.util.ArrayList<>();
 }

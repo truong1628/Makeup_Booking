@@ -47,18 +47,23 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/api/v1/auth/**",
-                    "/api/v1/demo/**",
                     "/error"
                 ).permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/services/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/layouts/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/vouchers/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/vouchers/apply").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/portfolios/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/reviews/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/bookings/check-availability").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/bookings/artists").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/bookings/dispatch-options").permitAll()
+                .requestMatchers("/api/v1/payments/vnpay-ipn", "/api/v1/payments/vnpay-return", "/api/v1/payments/test-email", "/api/v1/payments/send-confirmation-email/**").permitAll()
                 .requestMatchers("/api/v1/admin/**").hasAuthority("ROLE_ADMIN")
                 .requestMatchers("/api/v1/artist/**").hasAnyAuthority("ROLE_ARTIST", "ROLE_ADMIN")
                 .requestMatchers("/api/v1/customer/**").hasAnyAuthority("ROLE_CUSTOMER", "ROLE_ADMIN")
+                .requestMatchers("/api/v1/users/**").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

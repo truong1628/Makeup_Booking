@@ -3,11 +3,15 @@ package com.bookingmakeup.service;
 import com.bookingmakeup.common.exception.BadRequestException;
 import com.bookingmakeup.common.exception.ResourceNotFoundException;
 import com.bookingmakeup.dto.request.PortfolioCreateRequest;
+import com.bookingmakeup.dto.request.PortfolioImageRequest;
+import com.bookingmakeup.dto.response.PortfolioImageResponse;
 import com.bookingmakeup.dto.response.PortfolioResponse;
 import com.bookingmakeup.entity.MakeupArtist;
 import com.bookingmakeup.entity.Portfolio;
+import com.bookingmakeup.entity.PortfolioImage;
 import com.bookingmakeup.entity.User;
 import com.bookingmakeup.repository.MakeupArtistRepository;
+import com.bookingmakeup.repository.PortfolioImageRepository;
 import com.bookingmakeup.repository.PortfolioRepository;
 import com.bookingmakeup.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -23,6 +28,7 @@ import java.util.List;
 public class PortfolioService {
 
     private final PortfolioRepository portfolioRepository;
+    private final PortfolioImageRepository portfolioImageRepository;
     private final MakeupArtistRepository makeupArtistRepository;
 
     /**
@@ -85,6 +91,7 @@ public class PortfolioService {
                 .build();
 
         Portfolio saved = portfolioRepository.save(portfolio);
+        saveGalleryImages(saved, request);
         log.info("Thợ {} (ID: {}) đã đăng tác phẩm mới: {}", artist.getUser().getFullName(), artist.getId(), saved.getTitle());
         return mapToResponse(saved);
     }
@@ -115,7 +122,50 @@ public class PortfolioService {
         portfolio.setTags(request.getTags());
 
         Portfolio updated = portfolioRepository.save(portfolio);
+        if (request.getGallery() != null || request.getAdditionalImages() != null) {
+            portfolioImageRepository.deleteByPortfolioId(updated.getId());
+            saveGalleryImages(updated, request);
+        }
+
         return mapToResponse(updated);
+    }
+
+    private void saveGalleryImages(Portfolio portfolio, PortfolioCreateRequest request) {
+        if (request.getGallery() != null && !request.getGallery().isEmpty()) {
+            int order = 1;
+            for (PortfolioImageRequest imgReq : request.getGallery()) {
+                if (imgReq.getImageUrl() != null && !imgReq.getImageUrl().isBlank()) {
+                    PortfolioImage pImg = PortfolioImage.builder()
+                            .portfolio(portfolio)
+                            .imageUrl(imgReq.getImageUrl().trim())
+                            .caption(imgReq.getCaption())
+                            .displayOrder(imgReq.getDisplayOrder() != null ? imgReq.getDisplayOrder() : order++)
+                            .build();
+                    portfolioImageRepository.save(pImg);
+                }
+            }
+        } else if (request.getAdditionalImages() != null && !request.getAdditionalImages().isBlank()) {
+            String raw = request.getAdditionalImages().trim();
+            String[] urls;
+            if (raw.startsWith("[") && raw.endsWith("]")) {
+                urls = raw.replaceAll("[\\[\\]\"]", "").split(",");
+            } else {
+                urls = raw.split(",");
+            }
+            int order = 1;
+            for (String u : urls) {
+                String cleanUrl = u.trim();
+                if (!cleanUrl.isEmpty() && !cleanUrl.equalsIgnoreCase("null")) {
+                    PortfolioImage pImg = PortfolioImage.builder()
+                            .portfolio(portfolio)
+                            .imageUrl(cleanUrl)
+                            .caption("Góc chụp chi tiết")
+                            .displayOrder(order++)
+                            .build();
+                    portfolioImageRepository.save(pImg);
+                }
+            }
+        }
     }
 
     /**
@@ -146,6 +196,16 @@ public class PortfolioService {
         MakeupArtist artist = p.getMakeupArtist();
         User user = (artist != null) ? artist.getUser() : null;
 
+        List<PortfolioImage> dbImages = portfolioImageRepository.findByPortfolioIdOrderByDisplayOrderAsc(p.getId());
+        List<PortfolioImageResponse> gallery = dbImages.stream()
+                .map(img -> PortfolioImageResponse.builder()
+                        .id(img.getId())
+                        .imageUrl(img.getImageUrl())
+                        .caption(img.getCaption())
+                        .displayOrder(img.getDisplayOrder())
+                        .build())
+                .collect(Collectors.toList());
+
         return PortfolioResponse.builder()
                 .id(p.getId())
                 .artistId(artist != null ? artist.getId() : null)
@@ -153,11 +213,11 @@ public class PortfolioService {
                 .artistAvatar(user != null ? user.getAvatar() : null)
                 .artistPhone(user != null ? user.getPhone() : null)
                 .artistExperience(artist != null ? artist.getExperience() : null)
-                .artistSpecialties(artist != null ? artist.getSpecialties() : null)
                 .title(p.getTitle())
                 .description(p.getDescription())
                 .imageUrl(p.getImageUrl())
                 .additionalImages(p.getAdditionalImages())
+                .gallery(gallery)
                 .categoryName(p.getCategoryName())
                 .tags(p.getTags())
                 .viewCount(p.getViewCount() != null ? p.getViewCount() : 0)

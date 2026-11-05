@@ -1,6 +1,6 @@
 -- V1__init_schema.sql
 -- Makeup Booking Complete Database Schema Definition
--- Khởi tạo toàn bộ cấu trúc các bảng cho hệ thống Makeup Booking (Chuẩn 1NF, đã loại bỏ các bảng cũ)
+-- Khởi tạo toàn bộ cấu trúc các bảng cho hệ thống Makeup Booking (Đảm bảo đầy đủ PK, FK, UNIQUE, CHECK, NOT NULL)
 
 -- 1. Users Table (Người dùng: Admin, Artist, Customer)
 CREATE TABLE IF NOT EXISTS users (
@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS users (
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_users_role CHECK (role IN ('ROLE_ADMIN', 'ROLE_ARTIST', 'ROLE_CUSTOMER')),
+    CONSTRAINT chk_users_status CHECK (status IN ('ACTIVE', 'INACTIVE', 'BANNED')),
     INDEX idx_users_email (email),
     INDEX idx_users_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -46,6 +48,8 @@ CREATE TABLE IF NOT EXISTS makeup_services (
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_service_price CHECK (price >= 0),
+    CONSTRAINT chk_service_duration CHECK (duration > 0),
     INDEX idx_services_active (active),
     INDEX idx_services_combo (is_combo)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -60,6 +64,8 @@ CREATE TABLE IF NOT EXISTS service_combo_items (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_combo_parent FOREIGN KEY (combo_service_id) REFERENCES makeup_services(id) ON DELETE CASCADE,
     CONSTRAINT fk_combo_child FOREIGN KEY (item_service_id) REFERENCES makeup_services(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_combo_quantity CHECK (quantity > 0),
+    CONSTRAINT chk_combo_not_self CHECK (combo_service_id <> item_service_id),
     INDEX idx_combo_parent (combo_service_id),
     INDEX idx_combo_child (item_service_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -75,6 +81,7 @@ CREATE TABLE IF NOT EXISTS artist_schedules (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_schedule_artist FOREIGN KEY (makeup_artist_id) REFERENCES makeup_artists(id) ON DELETE CASCADE,
+    CONSTRAINT chk_schedule_time CHECK (end_time > start_time),
     INDEX idx_schedule_artist_date (makeup_artist_id, schedule_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -99,6 +106,9 @@ CREATE TABLE IF NOT EXISTS bookings (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_booking_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_booking_location CHECK (location_type IN ('STUDIO', 'HOME')),
+    CONSTRAINT chk_booking_artist_count CHECK (artist_count >= 1),
+    CONSTRAINT chk_booking_prices CHECK (total_price >= 0 AND surcharge >= 0 AND deposit_amount >= 0),
     INDEX idx_booking_user (user_id),
     INDEX idx_booking_date_time (booking_date, booking_time),
     INDEX idx_booking_status (status)
@@ -113,7 +123,8 @@ CREATE TABLE IF NOT EXISTS booking_addresses (
     travel_fee DECIMAL(12,2) DEFAULT 0.00,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_baddress_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+    CONSTRAINT fk_baddress_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+    CONSTRAINT chk_baddress_distance_fee CHECK (distance_km >= 0 AND travel_fee >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 8. Booking Items Table (Chi tiết dịch vụ và thợ phụ trách trong mỗi đơn)
@@ -130,6 +141,8 @@ CREATE TABLE IF NOT EXISTS booking_items (
     CONSTRAINT fk_bitem_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
     CONSTRAINT fk_bitem_service FOREIGN KEY (makeup_service_id) REFERENCES makeup_services(id) ON DELETE RESTRICT,
     CONSTRAINT fk_bitem_artist FOREIGN KEY (makeup_artist_id) REFERENCES makeup_artists(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_bitem_time CHECK (end_time > start_time),
+    CONSTRAINT chk_bitem_price CHECK (price >= 0),
     INDEX idx_bitem_booking (booking_id),
     INDEX idx_bitem_artist_slot (makeup_artist_id, start_time, end_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -147,6 +160,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     CONSTRAINT fk_review_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
     CONSTRAINT fk_review_customer FOREIGN KEY (customer_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_review_artist FOREIGN KEY (artist_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_review_rating CHECK (rating BETWEEN 1 AND 5),
     INDEX idx_review_artist (artist_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -162,6 +176,7 @@ CREATE TABLE IF NOT EXISTS payments (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_payment_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+    CONSTRAINT chk_payment_amount CHECK (amount >= 0),
     INDEX idx_payment_booking (booking_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -179,7 +194,8 @@ CREATE TABLE IF NOT EXISTS portfolios (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_portfolio_artist FOREIGN KEY (makeup_artist_id) REFERENCES makeup_artists(id) ON DELETE CASCADE,
-    INDEX idx_portfolio_artist (makeup_artist_id),
+    CONSTRAINT chk_portfolio_views CHECK (view_count >= 0),
+    INDEX idx_portfolio_artist (makeup_artist_id),  
     INDEX idx_portfolio_category (category_name),
     INDEX idx_portfolio_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

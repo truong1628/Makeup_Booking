@@ -11,4 +11,6 @@ public interface MakeupServiceRepository extends JpaRepository<MakeupService, Lo
     List<MakeupService> findByActiveTrue();
     List<MakeupService> findByActiveTrueAndIsComboFalse();
     List<MakeupService> findByActiveTrueAndIsComboTrue();
+    List<MakeupService> findByActiveTrueAndCategoryId(Long categoryId);
+    List<MakeupService> findByActiveTrueAndCategoryCode(String code);
 }

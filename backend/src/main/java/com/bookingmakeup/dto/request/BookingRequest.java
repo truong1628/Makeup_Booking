@@ -50,7 +50,11 @@ public class BookingRequest {
     private List<BookingItemRequest> items;
 
     private Long defaultArtistId;
+    private Long layoutId;
     private String layout;
     private String customerImage;
     private String notes;
+    private String voucherCode;
+    private String contactEmail;
+    private String contactPhone;
 }

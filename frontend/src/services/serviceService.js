@@ -51,7 +51,7 @@ export const serviceService = {
     } catch (patchErr) {
       // Fallback: Nếu route PATCH chưa reload, cập nhật qua PUT updateService
       if (currentService) {
-        const nextActive = !Boolean(currentService.active !== false);
+        const nextActive = !(currentService.active !== false);
         const payload = {
           serviceName: currentService.serviceName,
           price: currentService.price,

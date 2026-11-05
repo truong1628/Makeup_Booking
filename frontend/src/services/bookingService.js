@@ -37,6 +37,18 @@ export const bookingService = {
     return response.data;
   },
 
+  // Admin xác nhận đã chuyển khoản hoàn cọc cho khách
+  async confirmRefund(id) {
+    const response = await axiosInstance.post(`/api/v1/bookings/${id}/confirm-refund`);
+    return response.data;
+  },
+
+  // Admin xác nhận đã thu đủ tiền từ khách hàng
+  async collectPayment(id) {
+    const response = await axiosInstance.post(`/api/v1/bookings/${id}/collect-payment`);
+    return response.data;
+  },
+
   // Xem chi tiết đơn hẹn
   async getBookingById(id) {
     const response = await axiosInstance.get(`/api/v1/bookings/${id}`);
@@ -63,7 +75,13 @@ export const bookingService = {
     return response.data;
   },
 
-  // Xác nhận thanh toán cọc VNPay thành công
+  // Xác thực kết quả thanh toán VNPay khi khách quay lại website (Return URL)
+  async verifyVNPayReturn(queryString) {
+    const response = await axiosInstance.get(`/api/v1/payments/vnpay-return${queryString}`);
+    return response.data;
+  },
+
+  // Xác nhận thanh toán cọc VNPay thành công (fallback/sandbox)
   async confirmVNPay(bookingId, transactionCode) {
     const response = await axiosInstance.post('/api/v1/payments/confirm-vnpay', { 
       bookingId, 
@@ -107,6 +125,52 @@ export const bookingService = {
   // Hủy lịch hẹn (dành cho khách hàng sở hữu đơn hoặc Admin)
   async cancelBooking(id, reason) {
     const response = await axiosInstance.post(`/api/v1/bookings/${id}/cancel`, { reason });
+    return response.data;
+  },
+
+  // Khách hàng chỉnh sửa đơn hẹn (trước ít nhất 12 giờ so với giờ bắt đầu)
+  async updateBooking(id, payload) {
+    const response = await axiosInstance.put(`/api/v1/bookings/${id}`, payload);
+    return response.data;
+  },
+
+  // Admin lấy danh sách các ca xin hủy/đổi thợ
+  async getCancellationRequests(status = 'PENDING') {
+    const response = await axiosInstance.get('/api/v1/admin/cancellation-requests', {
+      params: { status }
+    });
+    return response.data || [];
+  },
+
+  // Admin duyệt hủy ca và chuyển sang cho thợ mới
+  async approveCancellationRequest(itemId, newArtistId, adminNote = '') {
+    const response = await axiosInstance.post(`/api/v1/admin/cancellation-requests/${itemId}/approve`, {
+      newArtistId,
+      adminNote
+    });
+    return response.data;
+  },
+
+  // Admin từ chối yêu cầu hủy ca
+  async rejectCancellationRequest(itemId, adminNote = '') {
+    const response = await axiosInstance.post(`/api/v1/admin/cancellation-requests/${itemId}/reject`, {
+      adminNote
+    });
+    return response.data;
+  },
+
+  // Admin lấy danh sách thợ khả dụng cho một ca làm việc cụ thể
+  async getAvailableArtistsForItem(itemId) {
+    const response = await axiosInstance.get(`/api/v1/admin/bookings/items/${itemId}/available-artists`);
+    return response.data || [];
+  },
+
+  // Admin chủ động thay đổi / phân công lại thợ makeup cho ca làm việc
+  async reassignArtist(itemId, newArtistId, adminNote = '') {
+    const response = await axiosInstance.post(`/api/v1/admin/bookings/items/${itemId}/reassign-artist`, {
+      newArtistId,
+      adminNote
+    });
     return response.data;
   }
 };

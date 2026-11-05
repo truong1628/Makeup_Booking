@@ -6,6 +6,10 @@ const ToastContext = createContext(null);
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
 
+  const removeToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   const addToast = useCallback((type, message, duration = 3500) => {
     const id = Date.now() + Math.random().toString(36).substring(2, 5);
     setToasts((prev) => [...prev, { id, type, message }]);
@@ -15,15 +19,12 @@ export const ToastProvider = ({ children }) => {
         removeToast(id);
       }, duration);
     }
-  }, []);
-
-  const removeToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  }, [removeToast]);
 
   const toast = {
     success: (msg, duration) => addToast('success', msg, duration),
     error: (msg, duration) => addToast('error', msg, duration),
+    warning: (msg, duration) => addToast('warning', msg, duration),
     info: (msg, duration) => addToast('info', msg, duration),
   };
 
@@ -41,12 +42,15 @@ export const ToastProvider = ({ children }) => {
                 ? 'bg-emerald-900/95 text-emerald-100 border-emerald-700/80 shadow-emerald-950/30'
                 : item.type === 'error'
                 ? 'bg-rose-900/95 text-rose-100 border-rose-700/80 shadow-rose-950/30'
+                : item.type === 'warning'
+                ? 'bg-amber-900/95 text-amber-100 border-amber-700/80 shadow-amber-950/30'
                 : 'bg-slate-900/95 text-slate-100 border-slate-700/80 shadow-slate-950/30'
             }`}
           >
             <div className="shrink-0 mt-0.5">
               {item.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
               {item.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-400" />}
+              {item.type === 'warning' && <AlertCircle className="w-5 h-5 text-amber-400" />}
               {item.type === 'info' && <Info className="w-5 h-5 text-sky-400" />}
             </div>
 

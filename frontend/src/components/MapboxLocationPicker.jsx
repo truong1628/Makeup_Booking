@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
-import { 
-  MapPin, Search, Navigation, AlertCircle, 
+import {
+  MapPin, Search, Navigation, AlertCircle,
   Route, Car, RefreshCw, X, Info,
   GraduationCap, Store, Building2, Hospital
 } from 'lucide-react';
@@ -11,14 +11,13 @@ import { formatCurrency, calculateTravelFee } from '../utils/format';
 const STUDIO_COORDS = {
   lng: 105.7951,
   lat: 21.0076,
-  name: 'Studio MNM Lumière',
+  name: 'Studio DungDorys',
   address: '204 Trần Duy Hưng, Q. Cầu Giấy, Hà Nội',
 };
 
 // Token Mapbox
-const DEFAULT_MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || 
-  'pk.eyJ1IjoibnZ0MjkwNjIwMDUiLCJhIjoiY21wOGYxaDA0MDZobzJ4cGswYzVtcHFmOCJ9.nP0Q3965TPCLvopUNOdF0w';
-
+// Thay vì gán chuỗi token trực tiếp vào đây, hãy đổi thành:
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 mapboxgl.accessToken = DEFAULT_MAPBOX_TOKEN;
 
 // Tính khoảng cách Haversine (đường chim bay) * 1.25 hệ số giao thông nội đô
@@ -29,9 +28,9 @@ const calculateHaversineKm = (lat1, lon1, lat2, lon2) => {
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const directDistance = R * c;
   return Number((directDistance * 1.25).toFixed(1));
@@ -113,7 +112,7 @@ const MapboxLocationPicker = ({
       const feeHtml = distKm > 200
         ? '<p class="text-rose-600 font-bold mt-1">⚠️ Vượt quá 200km (Không nhận đơn)</p>'
         : `<p class="text-rose-600 font-bold mt-1">Cách Studio: ${distKm} km</p>
-           <p class="text-slate-500 text-[10px]">Phụ phí di chuyển: ${fee === 0 ? 'Miễn phí (0 ₫)' : formatCurrency(fee)}</p>`;
+           <p class="text-slate-500 text-[10px]">Phụ phí di chuyển: ${fee === 0 ? 'Miễn phí (0 đ)' : formatCurrency(fee)}</p>`;
 
       customerPopupRef.current.setHTML(`
         <div class="p-2 text-xs font-sans">
@@ -202,7 +201,7 @@ const MapboxLocationPicker = ({
           const feeHtml = distKm > 200
             ? '<p class="text-rose-600 font-bold mt-1">⚠️ Vượt quá 200km (Không nhận đơn)</p>'
             : `<p class="text-rose-600 font-bold mt-1">Cách Studio: ${distKm} km (~${durMins} phút)</p>
-               <p class="text-slate-500 text-[10px]">Phụ phí di chuyển: ${fee === 0 ? 'Miễn phí (0 ₫)' : formatCurrency(fee)}</p>`;
+               <p class="text-slate-500 text-[10px]">Phụ phí di chuyển: ${fee === 0 ? 'Miễn phí (0 đ)' : formatCurrency(fee)}</p>`;
 
           customerPopupRef.current.setHTML(`
             <div class="p-2 text-xs font-sans">
@@ -615,18 +614,17 @@ const MapboxLocationPicker = ({
                   onClick={() => handleSelectSuggestion(item)}
                   className="px-4 py-3 hover:bg-rose-50/60 cursor-pointer transition-colors flex items-start gap-3 group"
                 >
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
-                    isSchool ? 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white' :
-                    isShop ? 'bg-purple-100 text-purple-600 group-hover:bg-purple-600 group-hover:text-white' :
-                    isHospital ? 'bg-red-100 text-red-600 group-hover:bg-red-600 group-hover:text-white' :
-                    isBuilding ? 'bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white' :
-                    'bg-rose-100 text-rose-600 group-hover:bg-rose-600 group-hover:text-white'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 transition-colors ${isSchool ? 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white' :
+                      isShop ? 'bg-purple-100 text-purple-600 group-hover:bg-purple-600 group-hover:text-white' :
+                        isHospital ? 'bg-red-100 text-red-600 group-hover:bg-red-600 group-hover:text-white' :
+                          isBuilding ? 'bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white' :
+                            'bg-rose-100 text-rose-600 group-hover:bg-rose-600 group-hover:text-white'
+                    }`}>
                     {isSchool ? <GraduationCap className="w-4 h-4" /> :
-                     isShop ? <Store className="w-4 h-4" /> :
-                     isHospital ? <Hospital className="w-4 h-4" /> :
-                     isBuilding ? <Building2 className="w-4 h-4" /> :
-                     <MapPin className="w-4 h-4" />}
+                      isShop ? <Store className="w-4 h-4" /> :
+                        isHospital ? <Hospital className="w-4 h-4" /> :
+                          isBuilding ? <Building2 className="w-4 h-4" /> :
+                            <MapPin className="w-4 h-4" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -749,18 +747,17 @@ const MapboxLocationPicker = ({
             </div>
           </div>
         ) : (
-          <div className={`p-3.5 rounded-2xl text-white shadow-md flex items-center gap-3 ${
-            travelFee === 0
+          <div className={`p-3.5 rounded-2xl text-white shadow-md flex items-center gap-3 ${travelFee === 0
               ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/20'
               : 'bg-gradient-to-br from-rose-500 to-pink-600 shadow-rose-500/20'
-          }`}>
+            }`}>
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
               <Car className="w-5 h-5 text-white" />
             </div>
             <div>
               <p className="text-[11px] font-medium text-white/80">Phụ Phí Di Chuyển</p>
-              <p className="text-base font-extrabold font-serif">
-                {travelFee === 0 ? 'Miễn Phí (0 ₫)' : formatCurrency(travelFee)}
+              <p className="text-base font-extrabold font-sans">
+                {travelFee === 0 ? 'Miễn Phí (0 đ)' : formatCurrency(travelFee)}
               </p>
             </div>
           </div>

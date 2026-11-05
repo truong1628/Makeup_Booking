@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { 
-  Palette, Calendar, Clock, User, LogOut, ArrowLeft, 
-  Menu, X, Sparkles, CheckCircle2, ChevronRight, Briefcase
+  Calendar, User, LogOut, ArrowLeft, 
+  Menu, X, Sparkles, Briefcase
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authStorage } from '../utils/authStorage';
@@ -74,9 +74,11 @@ const ArtistLayout = () => {
         {/* Brand header */}
         <div className="h-20 flex items-center justify-between px-6 border-b border-slate-800">
           <Link to="/artist" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 via-rose-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
-              <Palette className="w-5 h-5 text-white" />
-            </div>
+            <img
+              src="/logo.jpg"
+              alt="DungDorys Logo"
+              className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-400/50 shadow-md shadow-purple-500/20"
+            />
             <div>
               <span className="font-serif text-lg font-bold text-white tracking-wide">
                 Artist<span className="text-purple-400">Studio</span>

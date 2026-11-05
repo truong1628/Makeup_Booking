@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Calendar, Clock, MapPin, Building2, Home, Sparkles, 
-  AlertCircle, ChevronRight, ChevronDown, ChevronUp, CheckCircle2, CreditCard, Star, 
-  MessageSquare, RefreshCw, X, User, Heart, AlertTriangle,
-  Palette, Image as ImageIcon, Eye, EyeOff, Landmark, ArrowDownLeft
+  ChevronDown, ChevronUp, CheckCircle2, CreditCard, Star, 
+  RefreshCw, X, Heart, AlertTriangle,
+  Palette, Eye, EyeOff, Landmark, ArrowDownLeft, ArrowUpDown, Pencil, Save, Phone
 } from 'lucide-react';
 import { bookingService } from '../services/bookingService';
-import { formatCurrency, formatDate, formatTime, getStatusBadge } from '../utils/format';
+import { formatCurrency, formatTime, getStatusBadge, formatExecutionMode, decodeHtmlEntities } from '../utils/format';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -30,12 +30,21 @@ const POPULAR_BANKS = [
 ];
 
 const MyBookingsPage = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const toast = useToast();
+
+  useEffect(() => {
+    if (isAdmin) {
+      navigate('/admin/bookings', { replace: true });
+    }
+  }, [isAdmin, navigate]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('ALL'); // ALL, PENDING_PAYMENT, CONFIRMED, COMPLETED, CANCELLED
+  const [sortBy, setSortBy] = useState('BOOKING_DATE_DESC');
+  const [dateFilter, setDateFilter] = useState('');
 
   // Expand / collapse state for booking details
   const [expandedBookingIds, setExpandedBookingIds] = useState(new Set());
@@ -77,6 +86,20 @@ const MyBookingsPage = () => {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewsMap, setReviewsMap] = useState({}); // bookingId -> review object
 
+  // Edit Booking Modal state (chỉnh sửa đơn hẹn trước 12h)
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedBookingForEdit, setSelectedBookingForEdit] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    bookingDate: '',
+    bookingTime: '',
+    layout: '',
+    contactPhone: '',
+    address: '',
+    customerImage: '',
+    notes: '',
+  });
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+
   const fetchBookings = async () => {
     try {
       setLoading(true);
@@ -92,8 +115,11 @@ const MyBookingsPage = () => {
       });
       setBookings(list);
 
-      // Fetch reviews for completed bookings
-      const completedList = list.filter((b) => b.status === 'COMPLETED');
+      // Fetch reviews for completed bookings (chỉ lấy review cho các đơn hoàn thành và KHÔNG bị hủy)
+      const completedList = list.filter((b) => {
+        const isCancelled = b.status === 'CANCELLED' || Boolean(b.notes && (b.notes.includes('[Lý do hủy') || b.notes.includes('[HOÀN CỌC') || b.notes.includes('[ĐÃ HOÀN CỌC') || b.notes.includes('[Tự động hủy')));
+        return b.status === 'COMPLETED' && !isCancelled;
+      });
       if (completedList.length > 0) {
         const reviewPromises = completedList.map(async (b) => {
           try {
@@ -199,8 +225,18 @@ const MyBookingsPage = () => {
     }
   };
 
+  // Kiểm tra đơn đặt lịch có phải đã bị hủy hay không
+  const checkIsCancelled = (b) => {
+    if (!b) return false;
+    return b.status === 'CANCELLED' || Boolean(b.notes && (b.notes.includes('[Lý do hủy') || b.notes.includes('[HOÀN CỌC') || b.notes.includes('[ĐÃ HOÀN CỌC') || b.notes.includes('[Tự động hủy')));
+  };
+
   // Handle Review
   const handleOpenReviewModal = (booking) => {
+    if (checkIsCancelled(booking)) {
+      toast.error('Đơn đặt lịch đã bị hủy không được phép gửi đánh giá.');
+      return;
+    }
     setSelectedBookingForReview(booking);
     const existing = reviewsMap[booking.id];
     if (existing) {
@@ -216,6 +252,11 @@ const MyBookingsPage = () => {
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!selectedBookingForReview) return;
+    if (checkIsCancelled(selectedBookingForReview)) {
+      toast.error('Đơn đặt lịch đã bị hủy không được phép gửi đánh giá.');
+      setReviewModalOpen(false);
+      return;
+    }
     try {
       setSubmittingReview(true);
       const res = await bookingService.submitReview(
@@ -233,11 +274,131 @@ const MyBookingsPage = () => {
     }
   };
 
-  // Filter list
-  const filteredBookings = bookings.filter((b) => {
-    if (activeTab === 'ALL') return true;
-    return b.status === activeTab;
-  });
+  // Tính số giờ còn lại trước khi đơn hẹn bắt đầu
+  const getHoursUntilBookingStart = (booking) => {
+    if (!booking?.bookingDate || !booking?.bookingTime) return -1;
+    const timeStr = String(booking.bookingTime).slice(0, 8);
+    const startMs = new Date(`${booking.bookingDate}T${timeStr}`).getTime();
+    if (Number.isNaN(startMs)) return -1;
+    return (startMs - Date.now()) / (1000 * 60 * 60);
+  };
+
+  // Mở Modal Sửa Đơn Hẹn (chỉ cho phép trước 12h so với giờ bắt đầu)
+  const handleOpenEditModal = (booking) => {
+    const hoursLeft = getHoursUntilBookingStart(booking);
+    if (hoursLeft < 12) {
+      toast.error('⚠️ Chỉ được phép chỉnh sửa đơn hẹn trước ít nhất 12 giờ so với giờ bắt đầu lịch hẹn!');
+      return;
+    }
+    setSelectedBookingForEdit(booking);
+    const cleanTime = booking.bookingTime ? String(booking.bookingTime).slice(0, 5) : '09:00';
+    const rawNotes = booking.notes ? booking.notes.replace('[ĐÃ THU ĐỦ TIỀN]', '').trim() : '';
+    setEditFormData({
+      bookingDate: booking.bookingDate || '',
+      bookingTime: cleanTime,
+      layout: booking.layout || '',
+      contactPhone: booking.customerPhone || user?.phone || '',
+      address: booking.address || '',
+      customerImage: booking.customerImage || '',
+      notes: rawNotes,
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleSubmitEditBooking = async (e) => {
+    e.preventDefault();
+    if (!selectedBookingForEdit) return;
+
+    if (!editFormData.bookingDate || !editFormData.bookingTime) {
+      toast.error('Vui lòng chọn đầy đủ ngày hẹn và giờ bắt đầu!');
+      return;
+    }
+
+    const hoursLeft = getHoursUntilBookingStart(selectedBookingForEdit);
+    if (hoursLeft < 12) {
+      toast.error('⚠️ Đã quá thời hạn chỉnh sửa (phải sửa trước giờ bắt đầu ít nhất 12 tiếng)!');
+      setEditModalOpen(false);
+      return;
+    }
+
+    const formattedTime =
+      editFormData.bookingTime.length === 5
+        ? `${editFormData.bookingTime}:00`
+        : editFormData.bookingTime;
+
+    const newStartMs = new Date(`${editFormData.bookingDate}T${formattedTime.slice(0, 8)}`).getTime();
+    const hoursUntilNewStart = (newStartMs - Date.now()) / (1000 * 60 * 60);
+    if (Number.isNaN(newStartMs) || hoursUntilNewStart < 12) {
+      toast.error('⚠️ Thời gian hẹn mới phải cách thời điểm hiện tại tối thiểu 12 tiếng!');
+      return;
+    }
+
+    try {
+      setSubmittingEdit(true);
+
+      const payload = {
+        bookingDate: editFormData.bookingDate,
+        bookingTime: formattedTime,
+        layout: editFormData.layout,
+        contactPhone: editFormData.contactPhone,
+        address: editFormData.address,
+        customerImage: editFormData.customerImage,
+        notes: editFormData.notes,
+      };
+
+      await bookingService.updateBooking(selectedBookingForEdit.id, payload);
+      toast.success(`🎉 Đã cập nhật thông tin đơn hẹn #${selectedBookingForEdit.id} thành công!`);
+      setEditModalOpen(false);
+      setSelectedBookingForEdit(null);
+      await fetchBookings();
+    } catch (err) {
+      toast.error(err.message || 'Không thể cập nhật đơn hẹn, vui lòng thử lại!');
+    } finally {
+      setSubmittingEdit(false);
+    }
+  };
+
+  // Filter list theo effectiveStatus để đơn hủy không bao giờ hiển thị ở tab "Đã hoàn thành"
+  const filteredBookings = bookings
+    .filter((b) => {
+      const isCancelled = checkIsCancelled(b);
+      const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
+      if (activeTab !== 'ALL' && effectiveStatus !== activeTab) return false;
+      if (dateFilter && b.bookingDate !== dateFilter) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const getBookingTimestamp = (item) => {
+        if (!item?.bookingDate) return 0;
+        const timeStr = item.bookingTime ? String(item.bookingTime).slice(0, 8) : '00:00:00';
+        const ms = new Date(`${item.bookingDate}T${timeStr}`).getTime();
+        return Number.isNaN(ms) ? 0 : ms;
+      };
+      const getCreatedTimestamp = (item) => {
+        if (!item?.createdAt) return 0;
+        const ms = new Date(item.createdAt).getTime();
+        return Number.isNaN(ms) ? 0 : ms;
+      };
+
+      if (sortBy === 'BOOKING_DATE_ASC') {
+        const diff = getBookingTimestamp(a) - getBookingTimestamp(b);
+        if (diff !== 0) return diff;
+        return (Number(a.id) || 0) - (Number(b.id) || 0);
+      }
+      if (sortBy === 'BOOKING_DATE_DESC') {
+        const diff = getBookingTimestamp(b) - getBookingTimestamp(a);
+        if (diff !== 0) return diff;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+      }
+      if (sortBy === 'CREATED_ASC') {
+        const diff = getCreatedTimestamp(a) - getCreatedTimestamp(b);
+        if (diff !== 0) return diff;
+        return (Number(a.id) || 0) - (Number(b.id) || 0);
+      }
+      const diffCreated = getCreatedTimestamp(b) - getCreatedTimestamp(a);
+      if (diffCreated !== 0) return diffCreated;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
@@ -274,28 +435,83 @@ const MyBookingsPage = () => {
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex overflow-x-auto pb-2 gap-2 border-b border-slate-100 no-scrollbar">
-        {[
-          { key: 'ALL', label: 'Tất Cả Lịch Hẹn' },
-          { key: 'PENDING_PAYMENT', label: 'Chờ Thanh Toán Cọc' },
-          { key: 'CONFIRMED', label: 'Đã Xác Nhận' },
-          { key: 'COMPLETED', label: 'Đã Hoàn Thành' },
-          { key: 'CANCELLED', label: 'Đã Hủy' },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-              activeTab === tab.key
-                ? 'bg-rose-600 text-white shadow-xs shadow-rose-500/20'
-                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Filter Tabs & Date Sort Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+        <div className="flex overflow-x-auto pb-1 gap-2 no-scrollbar">
+          {[
+            { key: 'ALL', label: 'Tất Cả Lịch Hẹn' },
+            { key: 'PENDING_PAYMENT', label: 'Chờ Thanh Toán Cọc' },
+            { key: 'CONFIRMED', label: 'Đã Xác Nhận' },
+            { key: 'COMPLETED', label: 'Đã Hoàn Thành' },
+            { key: 'CANCELLED', label: 'Đã Hủy' },
+          ].map((tab) => {
+            const count = tab.key === 'ALL'
+              ? bookings.length
+              : bookings.filter((b) => {
+                  const isCancelled = checkIsCancelled(b);
+                  const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
+                  return effectiveStatus === tab.key;
+                }).length;
+
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  activeTab === tab.key
+                    ? 'bg-rose-600 text-white shadow-xs shadow-rose-500/20'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  activeTab === tab.key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Sắp xếp & Lọc theo ngày */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="relative">
+            <ArrowUpDown className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-rose-500 pointer-events-none" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-white border border-slate-200 rounded-2xl pl-8 pr-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-rose-500 transition-colors cursor-pointer shadow-2xs"
+              title="Sắp xếp lịch hẹn theo ngày"
+            >
+              <option value="BOOKING_DATE_DESC">📅 Ngày hẹn: Mới → Cũ</option>
+              <option value="BOOKING_DATE_ASC">📅 Ngày hẹn: Cũ → Mới</option>
+              <option value="CREATED_DESC">🕒 Ngày đặt: Mới nhất trước</option>
+              <option value="CREATED_ASC">🕒 Ngày đặt: Cũ nhất trước</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="bg-white border border-slate-200 rounded-2xl px-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-rose-500 transition-colors shadow-2xs"
+              title="Lọc theo ngày hẹn"
+            />
+            {dateFilter && (
+              <button
+                type="button"
+                onClick={() => setDateFilter('')}
+                className="px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold"
+                title="Bỏ lọc ngày"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Main List */}
@@ -324,14 +540,17 @@ const MyBookingsPage = () => {
       ) : (
         <div className="space-y-5">
           {filteredBookings.map((booking) => {
-            const statusInfo = getStatusBadge(booking.status);
-            const isPendingPayment = booking.status === 'PENDING_PAYMENT';
-            const isCompleted = booking.status === 'COMPLETED';
-            const isConfirmed = booking.status === 'CONFIRMED';
-            const isCancelled = booking.status === 'CANCELLED';
+            const isCancelled = checkIsCancelled(booking);
+            const effectiveStatus = isCancelled ? 'CANCELLED' : booking.status;
+            const statusInfo = getStatusBadge(effectiveStatus);
+            const isPendingPayment = !isCancelled && effectiveStatus === 'PENDING_PAYMENT';
+            const isCompleted = !isCancelled && effectiveStatus === 'COMPLETED';
+            const isConfirmed = !isCancelled && effectiveStatus === 'CONFIRMED';
             const canCancel = isPendingPayment || isConfirmed;
+            const hoursUntilStart = getHoursUntilBookingStart(booking);
+            const canEdit = canCancel && hoursUntilStart >= 12;
             const hasRefundRequest = isCancelled && booking.notes && booking.notes.includes('[HOÀN CỌC');
-            const existingReview = reviewsMap[booking.id];
+            const existingReview = !isCancelled ? reviewsMap[booking.id] : null;
             const isExpanded = expandedBookingIds.has(booking.id);
 
             const firstServiceName = booking.items?.[0]?.serviceName || 'Dịch vụ trang điểm';
@@ -340,7 +559,7 @@ const MyBookingsPage = () => {
             return (
               <div
                 key={booking.id}
-                className={`bg-white rounded-3xl border transition-all overflow-hidden ${
+                className={`bg-white rounded-3xl border transition-all ${
                   isExpanded
                     ? 'border-rose-300 shadow-md ring-1 ring-rose-500/10'
                     : 'border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm'
@@ -365,8 +584,14 @@ const MyBookingsPage = () => {
                           <span>Chờ Hoàn Cọc ({formatCurrency(booking.depositAmount)})</span>
                         </span>
                       )}
+                      {isPendingPayment && (
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 animate-pulse">
+                          <Clock className="w-3 h-3 text-amber-700" />
+                          <span>Tạm giữ lịch 15 phút</span>
+                        </span>
+                      )}
                       <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
-                        {booking.executionMode === 'PARALLEL' ? 'Làm song song' : 'Làm lần lượt'}
+                        Chế độ: {formatExecutionMode(booking.executionMode, booking.dispatchPlan)}
                       </span>
                       {booking.locationType === 'HOME' ? (
                         <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-medium flex items-center gap-1">
@@ -431,7 +656,7 @@ const MyBookingsPage = () => {
                     <div className="flex items-center justify-between md:justify-end gap-4 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-200/60">
                       <div className="text-left md:text-right">
                         <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Tổng thanh toán</span>
-                        <span className="text-base sm:text-lg font-bold text-slate-900 font-serif">
+                        <span className="text-base sm:text-lg font-bold text-slate-900 font-sans">
                           {formatCurrency(booking.totalPrice)}
                         </span>
                       </div>
@@ -487,8 +712,44 @@ const MyBookingsPage = () => {
                       )}
                     </button>
 
-                    {/* Quick Actions (Thanh toán cọc / Hủy lịch / Review / Nâng cấp cọc) */}
+                    {/* Quick Actions (Sửa đơn / Thanh toán cọc / Hủy lịch / Review / Nâng cấp cọc) */}
                     <div className="flex flex-wrap items-center gap-2">
+                      {/* Nút Sửa Đơn (Kiểm tra mốc 12 tiếng trước giờ bắt đầu) */}
+                      {canCancel && (
+                        canEdit ? (
+                          <button
+                            type="button"
+                            id={`btn-edit-booking-${booking.id}`}
+                            onClick={() => handleOpenEditModal(booking)}
+                            className="py-2 px-3.5 rounded-xl border border-indigo-200 hover:border-indigo-300 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                            title="Sửa đơn hẹn (đổi ngày/giờ hẹn, phong cách makeup)"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Sửa đơn</span>
+                          </button>
+                        ) : (
+                          <div
+                            className="relative group inline-block"
+                            title="Không thể sửa đơn: Chỉ được phép chỉnh sửa đơn hẹn trước giờ bắt đầu tối thiểu 12 tiếng"
+                          >
+                            <button
+                              type="button"
+                              id={`btn-edit-booking-disabled-${booking.id}`}
+                              disabled
+                              className="py-2 px-3.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-400 font-semibold text-xs flex items-center gap-1.5 cursor-not-allowed opacity-75"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Sửa đơn</span>
+                            </button>
+                            {/* Tooltip thông báo khi dưới 12 tiếng */}
+                            <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-2 rounded-xl bg-slate-900 text-white text-[11px] font-medium text-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                              Chỉ được sửa đơn hẹn trước giờ bắt đầu tối thiểu 12 tiếng
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+                            </div>
+                          </div>
+                        )
+                      )}
+
                       {/* Nút Hủy Lịch Hẹn */}
                       {canCancel && (
                         <button
@@ -527,12 +788,12 @@ const MyBookingsPage = () => {
                         </button>
                       )}
 
-                      {isCompleted && (
+                      {isCompleted && !isCancelled && (
                         <button
                           type="button"
                           id={`btn-review-${booking.id}`}
                           onClick={() => handleOpenReviewModal(booking)}
-                          className="py-2 px-3.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs"
+                          className="py-2 px-3.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                         >
                           <Star className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
                           <span>{existingReview ? 'Sửa Đánh Giá' : 'Đánh Giá Dịch Vụ'}</span>
@@ -600,7 +861,7 @@ const MyBookingsPage = () => {
                                   <span>Ca: {formatTime(item.startTime)} - {formatTime(item.endTime)}</span>
                                 </p>
                               </div>
-                              <span className="text-sm font-bold text-slate-800 font-serif">
+                              <span className="text-sm font-bold text-slate-800 font-sans">
                                 {formatCurrency(item.price)}
                               </span>
                             </div>
@@ -644,8 +905,8 @@ const MyBookingsPage = () => {
                           </div>
                         )}
 
-                        {/* Existing Review Badge if available */}
-                        {existingReview && (
+                        {/* Existing Review Badge if available (chỉ hiển thị khi đơn đã hoàn thành và KHÔNG bị hủy) */}
+                        {existingReview && !isCancelled && (
                           <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
@@ -657,8 +918,8 @@ const MyBookingsPage = () => {
                               </span>
                             </div>
                             {existingReview.comment && (
-                              <p className="text-xs text-slate-700 italic bg-white/80 p-2.5 rounded-xl border border-amber-100">
-                                "{existingReview.comment}"
+                              <p className="text-xs text-slate-700 italic bg-white/80 p-2.5 rounded-xl border border-amber-100 break-words whitespace-pre-wrap">
+                                "{decodeHtmlEntities(existingReview.comment)}"
                               </p>
                             )}
                           </div>
@@ -694,10 +955,23 @@ const MyBookingsPage = () => {
                           )}
                           <div className="flex justify-between font-bold text-slate-900 text-sm pt-1">
                             <span>Tổng chi phí:</span>
-                            <span className="font-serif text-rose-600 text-base">{formatCurrency(booking.totalPrice)}</span>
+                            <span className="font-sans text-rose-600 text-base">{formatCurrency(booking.totalPrice)}</span>
                           </div>
 
-                          {booking.paymentMethod === 'CASH' ? (
+                          {isCancelled ? (
+                            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                              <div className="flex justify-between font-semibold text-rose-700">
+                                <span>Trạng thái đơn:</span>
+                                <span className="font-bold">ĐÃ HỦY LỊCH</span>
+                              </div>
+                              {booking.depositAmount > 0 && (
+                                <div className="flex justify-between text-slate-500 text-[11px]">
+                                  <span>Tiền cọc ban đầu:</span>
+                                  <span className="font-sans">{formatCurrency(booking.depositAmount)}</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : booking.paymentMethod === 'CASH' ? (
                             <div className="space-y-2 pt-2 border-t border-slate-100">
                               <div className="flex justify-between font-semibold text-amber-800">
                                 <span>Hình thức:</span>
@@ -711,19 +985,48 @@ const MyBookingsPage = () => {
                             <div className="space-y-1.5 pt-2 border-t border-slate-100">
                               <div className="flex justify-between font-semibold text-emerald-700">
                                 <span>Tiền cọc đã thanh toán (30%):</span>
-                                <span className="font-serif font-bold">{formatCurrency(booking.depositAmount)}</span>
+                                <span className="font-sans font-bold">{formatCurrency(booking.depositAmount)}</span>
                               </div>
                               <div className="flex justify-between text-slate-500 text-[11px]">
                                 <span>Còn lại sau dịch vụ (70%):</span>
-                                <span className="font-serif font-medium">{formatCurrency(booking.totalPrice - booking.depositAmount)}</span>
+                                <span className="font-sans font-medium">{formatCurrency(booking.totalPrice - booking.depositAmount)}</span>
                               </div>
                             </div>
                           )}
                         </div>
 
-                        {/* Nút hủy lịch bổ sung trong phần chi tiết */}
+                        {/* Nút sửa đơn & hủy lịch bổ sung trong phần chi tiết */}
                         {canCancel && (
-                          <div className="pt-2 border-t border-slate-100">
+                          <div className="pt-2 border-t border-slate-100 space-y-2">
+                            {canEdit ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(booking)}
+                                className="w-full py-2.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>Sửa Đơn Đặt Lịch Này</span>
+                              </button>
+                            ) : (
+                              <div
+                                className="relative group w-full"
+                                title="Không thể sửa đơn: Chỉ được phép chỉnh sửa đơn hẹn trước giờ bắt đầu tối thiểu 12 tiếng"
+                              >
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="w-full py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-400 font-semibold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed opacity-75"
+                                >
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>Sửa Đơn (Chỉ sửa trước 12 tiếng)</span>
+                                </button>
+                                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-2 rounded-xl bg-slate-900 text-white text-[11px] font-medium text-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                                  Chỉ được sửa đơn hẹn trước giờ bắt đầu tối thiểu 12 tiếng
+                                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+                                </div>
+                              </div>
+                            )}
+
                             <button
                               type="button"
                               onClick={() => handleOpenCancelModal(booking)}
@@ -774,7 +1077,7 @@ const MyBookingsPage = () => {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600 font-semibold">Tiền cọc (30%):</span>
-                <span className="font-bold text-rose-600 font-serif">
+                <span className="font-bold text-rose-600 font-sans">
                   {formatCurrency(vnpayData.amount)}
                 </span>
               </div>
@@ -794,12 +1097,21 @@ const MyBookingsPage = () => {
             </div>
 
             <div className="space-y-2 pt-2">
+              {vnpayData?.paymentUrl && (
+                <a
+                  href={vnpayData.paymentUrl}
+                  className="w-full py-3 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-2 text-center"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>Mở Cổng Thanh Toán VNPay</span>
+                </a>
+              )}
               <button
                 type="button"
                 id="btn-confirm-retry-pay"
                 disabled={paying}
                 onClick={handleConfirmRetryPayment}
-                className="w-full py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
               >
                 {paying ? (
                   <span>Đang xác nhận kết quả...</span>
@@ -859,7 +1171,7 @@ const MyBookingsPage = () => {
                 <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs space-y-2 text-amber-900">
                   <div className="flex items-center justify-between font-bold text-amber-800 text-sm">
                     <span>Số tiền cọc cần hoàn trả:</span>
-                    <span className="font-serif text-base text-rose-600">{formatCurrency(selectedBookingForCancel.depositAmount)}</span>
+                    <span className="font-sans text-base text-rose-600">{formatCurrency(selectedBookingForCancel.depositAmount)}</span>
                   </div>
                   <p className="text-[11px] leading-relaxed text-amber-800">
                     💡 <strong>Chính sách hoàn cọc:</strong> Do đơn hẹn đã thanh toán cọc thành công, quý khách vui lòng nhập chính xác thông tin tài khoản ngân hàng bên dưới. Nhân viên CSKH của Studio sẽ liên hệ xác nhận và <strong>chuyển khoản hoàn tiền cọc trong vòng 24 giờ làm việc</strong>.
@@ -1033,7 +1345,7 @@ const MyBookingsPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitReview} className="space-y-4">
+            <form onSubmit={handleSubmitReview} noValidate className="space-y-4">
               {/* Star rating selector */}
               <div className="text-center space-y-2 py-2">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -1103,6 +1415,212 @@ const MyBookingsPage = () => {
                     <>
                       <Heart className="w-4 h-4 fill-white" />
                       <span>Gửi Đánh Giá</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* EDIT BOOKING MODAL (CHỈNH SỬA ĐƠN HẸN TRƯỚC 12H) */}
+      {/* ======================================================== */}
+      {editModalOpen && selectedBookingForEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-xl w-full p-6 sm:p-8 space-y-5 my-auto max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-900">
+                    Chỉnh Sửa Đơn Hẹn #{selectedBookingForEdit.id}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Đổi ngày giờ hẹn, phong cách makeup hoặc thông tin liên hệ (trước ít nhất 12 giờ)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 flex items-start gap-2.5">
+              <Clock className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Chính sách đổi lịch miễn phí:</span> Bạn có thể thay đổi ngày giờ hẹn và thông tin yêu cầu trước giờ bắt đầu đơn ít nhất <strong>12 tiếng</strong>. Hệ thống sẽ tự động kiểm tra và sắp xếp chuyên viên phù hợp cho khung giờ mới.
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitEditBooking} noValidate className="space-y-4">
+              {/* Ngày hẹn & Giờ bắt đầu */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Ngày hẹn mới <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      required
+                      min={new Date().toISOString().split('T')[0]}
+                      value={editFormData.bookingDate}
+                      onChange={(e) =>
+                        setEditFormData((prev) => ({ ...prev, bookingDate: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Giờ bắt đầu mới (06:00 - 21:00) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="time"
+                      required
+                      min="06:00"
+                      max="21:00"
+                      value={editFormData.bookingTime}
+                      onChange={(e) =>
+                        setEditFormData((prev) => ({ ...prev, bookingTime: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Phong cách trang điểm (Layout) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Phong cách trang điểm (Layout)
+                </label>
+                <div className="relative">
+                  <Palette className="w-4 h-4 text-rose-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={editFormData.layout}
+                    onChange={(e) =>
+                      setEditFormData((prev) => ({ ...prev, layout: e.target.value }))
+                    }
+                    placeholder="Ví dụ: Hàn Quốc Trong Veo, Tone Tây Sắc Sảo, Douyin..."
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {[
+                    'Hàn Quốc Trong Veo',
+                    'Tone Tây Sắc Sảo',
+                    'Tone Thái Lan Quyến Rũ',
+                    'Douyin Ngọt Ngào',
+                    'Nàng Thơ Cổ Điển',
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() =>
+                        setEditFormData((prev) => ({ ...prev, layout: preset }))
+                      }
+                      className={`text-[11px] px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
+                        editFormData.layout === preset
+                          ? 'bg-rose-600 text-white border-rose-600 font-semibold'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-600'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Số điện thoại liên hệ */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Số điện thoại liên hệ
+                </label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="tel"
+                    value={editFormData.contactPhone}
+                    onChange={(e) =>
+                      setEditFormData((prev) => ({ ...prev, contactPhone: e.target.value }))
+                    }
+                    placeholder="Nhập số điện thoại liên hệ..."
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Địa chỉ thực hiện (nếu là đơn HOME) */}
+              {selectedBookingForEdit.locationType === 'HOME' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Địa chỉ phục vụ tận nơi
+                  </label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 text-amber-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={editFormData.address}
+                      onChange={(e) =>
+                        setEditFormData((prev) => ({ ...prev, address: e.target.value }))
+                      }
+                      placeholder="Nhập địa chỉ chi tiết số nhà, ngõ, đường..."
+                      className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Ghi chú cho chuyên viên */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Ghi chú cho chuyên viên (tình trạng da, kiểu tóc, yêu cầu riêng)
+                </label>
+                <textarea
+                  rows={3}
+                  value={editFormData.notes}
+                  onChange={(e) =>
+                    setEditFormData((prev) => ({ ...prev, notes: e.target.value }))
+                  }
+                  placeholder="Ví dụ: Da nhạy cảm thiên khô, muốn làm tóc xoăn sóng lơi..."
+                  className="w-full p-3.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditModalOpen(false)}
+                  className="px-5 py-2.5 rounded-full border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Đóng Lại
+                </button>
+                <button
+                  type="submit"
+                  id="btn-confirm-edit-booking"
+                  disabled={submittingEdit}
+                  className="px-6 py-2.5 rounded-full bg-gradient-to-r from-indigo-600 to-rose-600 hover:from-indigo-700 hover:to-rose-700 text-white font-bold text-xs shadow-md shadow-indigo-500/25 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  {submittingEdit ? (
+                    <span>Đang lưu thay đổi...</span>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Lưu Thay Đổi Đơn Hẹn</span>
                     </>
                   )}
                 </button>

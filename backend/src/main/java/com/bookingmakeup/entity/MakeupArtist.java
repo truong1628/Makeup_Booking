@@ -25,9 +25,6 @@ public class MakeupArtist extends BaseEntity {
     @Column(length = 100)
     private String experience;
 
-    @Column(length = 255)
-    private String specialties;
-
     @Column(name = "working_hours", length = 100)
     private String workingHours;
 

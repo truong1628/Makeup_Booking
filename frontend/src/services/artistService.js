@@ -29,5 +29,23 @@ export const artistService = {
   async updateProfile(profileData) {
     const res = await axiosInstance.put('/api/v1/artist/profile', profileData);
     return res.data;
+  },
+
+  // Cập nhật trạng thái ca làm việc (IN_PROGRESS, COMPLETED)
+  async updateAssignmentStatus(bookingId, status) {
+    const res = await axiosInstance.patch(`/api/v1/artist/assignments/${bookingId}/status?status=${status}`);
+    return res.data;
+  },
+
+  // Chuyên gia xác nhận đã thu tiền từ khách hàng
+  async collectPayment(bookingId) {
+    const res = await axiosInstance.post(`/api/v1/artist/assignments/${bookingId}/collect-payment`);
+    return res.data;
+  },
+
+  // Thợ yêu cầu hủy ca làm việc
+  async requestCancelAssignment(itemId, reason) {
+    const res = await axiosInstance.post(`/api/v1/artist/assignments/${itemId}/request-cancel`, { reason });
+    return res.data;
   }
 };

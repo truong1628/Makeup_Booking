@@ -5,24 +5,32 @@ import com.bookingmakeup.common.exception.ResourceNotFoundException;
 import com.bookingmakeup.dto.request.BookingAddressRequest;
 import com.bookingmakeup.dto.request.BookingItemRequest;
 import com.bookingmakeup.dto.request.BookingRequest;
+import com.bookingmakeup.dto.request.CustomerBookingUpdateRequest;
 import com.bookingmakeup.dto.request.DispatchEstimateRequest;
+import com.bookingmakeup.dto.request.VoucherApplyRequest;
 import com.bookingmakeup.dto.response.BookingItemResponse;
 import com.bookingmakeup.dto.response.BookingResponse;
 import com.bookingmakeup.dto.response.DispatchOptionResponse;
+import com.bookingmakeup.dto.response.VoucherApplyResponse;
 import com.bookingmakeup.entity.*;
 import com.bookingmakeup.enums.BookingStatus;
 import com.bookingmakeup.enums.ExecutionMode;
 import com.bookingmakeup.enums.LocationType;
+import com.bookingmakeup.enums.PaymentMethod;
+import com.bookingmakeup.enums.PaymentStatus;
+import com.bookingmakeup.enums.Role;
 import com.bookingmakeup.repository.*;
 import com.bookingmakeup.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -40,6 +48,9 @@ public class BookingService {
     private final MakeupArtistRepository makeupArtistRepository;
     private final UserRepository userRepository;
     private final PaymentRepository paymentRepository;
+    private final MakeupLayoutRepository makeupLayoutRepository;
+    private final VoucherRepository voucherRepository;
+    private final VoucherService voucherService;
 
     @Transactional(readOnly = true)
     public boolean checkSlotAvailability(Long artistId, LocalDate date, LocalTime startTime, LocalTime endTime) {
@@ -81,6 +92,64 @@ public class BookingService {
             throw new BadRequestException(String.format("Thợ '%s' đã có ca làm việc khác từ %s đến %s vào ngày %s",
                     artist.getUser().getFullName(), conflict.getStartTime(), conflict.getEndTime(), date));
         }
+    }
+
+    private Map<Long, Long> getMonthlyBookingCountPerArtist(LocalDate targetDate) {
+        LocalDate date = targetDate != null ? targetDate : LocalDate.now();
+        LocalDate startOfMonth = date.withDayOfMonth(1);
+        LocalDate endOfMonth = date.withDayOfMonth(date.lengthOfMonth());
+
+        List<Object[]> results = bookingItemRepository.countDistinctBookingsByArtistInDateRange(startOfMonth, endOfMonth);
+        Map<Long, Long> counts = new HashMap<>();
+        if (results != null) {
+            for (Object[] row : results) {
+                Long artistId = (Long) row[0];
+                Long count = ((Number) row[1]).longValue();
+                counts.put(artistId, count);
+            }
+        }
+        return counts;
+    }
+
+    private Map<Long, Long> getAllTimeBookingCountPerArtist() {
+        List<Object[]> results = bookingItemRepository.countDistinctBookingsByArtistAllTime();
+        Map<Long, Long> counts = new HashMap<>();
+        if (results != null) {
+            for (Object[] row : results) {
+                Long artistId = (Long) row[0];
+                Long count = ((Number) row[1]).longValue();
+                counts.put(artistId, count);
+            }
+        }
+        return counts;
+    }
+
+    /**
+     * Thuật toán cân bằng tải công việc giữa các chuyên viên trong tháng (Fair Share Workload Distribution):
+     * - Mục tiêu: Đảm bảo trong 1 tháng, tất cả chuyên viên đều nhận số lượng lịch đều nhau (ví dụ: Dung 10 lịch thì các thợ khác 9 hoặc 10 lịch).
+     * - Cơ chế:
+     *   1. Đếm số đơn đặt lịch (DISTINCT bookings, không tính đơn hủy) mà mỗi thợ phụ trách trong tháng của bookingDate.
+     *   2. Ưu tiên chuyên viên có số đơn trong tháng THẤP NHẤT nhận lịch tiếp theo.
+     *   3. Nếu số đơn trong tháng bằng nhau: Ưu tiên chuyên viên có tổng số đơn từ trước đến nay thấp hơn.
+     *   4. Nếu vẫn bằng nhau: Sắp xếp theo ID tăng dần để đảm bảo tính nhất quán (deterministic).
+     */
+    private Comparator<MakeupArtist> createFairWorkloadComparator(LocalDate targetDate) {
+        Map<Long, Long> monthlyCounts = getMonthlyBookingCountPerArtist(targetDate);
+        Map<Long, Long> allTimeCounts = getAllTimeBookingCountPerArtist();
+
+        return (a1, a2) -> {
+            long count1 = monthlyCounts.getOrDefault(a1.getId(), 0L);
+            long count2 = monthlyCounts.getOrDefault(a2.getId(), 0L);
+            if (count1 != count2) {
+                return Long.compare(count1, count2);
+            }
+            long all1 = allTimeCounts.getOrDefault(a1.getId(), 0L);
+            long all2 = allTimeCounts.getOrDefault(a2.getId(), 0L);
+            if (all1 != all2) {
+                return Long.compare(all1, all2);
+            }
+            return Long.compare(a1.getId(), a2.getId());
+        };
     }
 
     /**
@@ -249,6 +318,12 @@ public class BookingService {
                 }
             }
 
+            // Sắp xếp chuyên viên theo thuật toán cân bằng tải công việc trong tháng (Fair Workload Balancing):
+            // Ưu tiên chuyên viên có ít đơn/lịch đặt nhất trong tháng (chênh lệch <= 1 lịch giữa các thợ)
+            Comparator<MakeupArtist> fairComparator = createFairWorkloadComparator(request.getBookingDate());
+            availableArtists.sort(fairComparator);
+            busyArtists.sort(fairComparator);
+
             // Nếu studio có thợ rảnh nhưng số lượng thợ rảnh không đủ k thợ cho gói này -> bỏ qua gói này
             if (!availableArtists.isEmpty() && k > availableArtists.size()) {
                 continue;
@@ -364,8 +439,20 @@ public class BookingService {
 
     @Transactional
     public BookingResponse createBooking(UserPrincipal currentUser, BookingRequest request) {
+        if (currentUser == null) {
+            throw new BadRequestException("Vui lòng đăng nhập tài khoản Khách hàng để thực hiện đặt lịch");
+        }
+
+        if ("ROLE_ADMIN".equals(currentUser.getRole()) || "ROLE_ARTIST".equals(currentUser.getRole())) {
+            throw new BadRequestException("Tài khoản Quản trị viên (Admin) và Nghệ sĩ (Artist) không được phép thực hiện đặt lịch dịch vụ. Vui lòng sử dụng tài khoản Khách hàng.");
+        }
+
         User customer = userRepository.findById(currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", currentUser.getId()));
+
+        if (customer.getRole() == Role.ROLE_ADMIN || customer.getRole() == Role.ROLE_ARTIST) {
+            throw new BadRequestException("Tài khoản Quản trị viên (Admin) và Nghệ sĩ (Artist) không được phép thực hiện đặt lịch dịch vụ. Vui lòng sử dụng tài khoản Khách hàng.");
+        }
 
         if (request.getItems() == null || request.getItems().isEmpty()) {
             throw new BadRequestException("Đơn đặt lịch phải có ít nhất 1 dịch vụ");
@@ -459,12 +546,70 @@ public class BookingService {
             discountAmount = servicesPrice.multiply(BigDecimal.valueOf(0.15)).setScale(-3, RoundingMode.HALF_UP);
         }
 
+        // Áp dụng mã Voucher khuyến mãi nếu có
+        Voucher appliedVoucher = null;
+        if (request.getVoucherCode() != null && !request.getVoucherCode().isBlank()) {
+            String vCode = request.getVoucherCode().trim().toUpperCase();
+            try {
+                VoucherApplyResponse vResp = voucherService.calculateVoucherDiscount(
+                        VoucherApplyRequest.builder().code(vCode).orderAmount(servicesPrice).build(),
+                        currentUser.getId()
+                );
+                Optional<Voucher> vOpt = voucherRepository.findByCodeIgnoreCase(vCode);
+                if (vOpt.isPresent()) {
+                    Voucher v = vOpt.get();
+                    appliedVoucher = v;
+                    discountAmount = discountAmount.add(vResp.getDiscountAmount());
+                    voucherService.incrementUsedCount(v.getId());
+                    if (v.getVoucherScope() == com.bookingmakeup.enums.VoucherScope.PERSONAL) {
+                        voucherService.markPersonalVoucherUsed(currentUser.getId(), v.getId());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Lỗi khi áp dụng voucher '{}' cho user ID {}: {}", vCode, currentUser.getId(), e.getMessage());
+                throw new BadRequestException("Không thể áp dụng voucher: " + e.getMessage());
+            }
+        }
+
         BigDecimal totalPrice = servicesPrice.subtract(discountAmount).add(travelFee).add(surcharge);
         if (totalPrice.compareTo(BigDecimal.ZERO) < 0) {
             totalPrice = BigDecimal.ZERO;
         }
         // Tiền cọc 30% tổng giá trị đơn
         BigDecimal depositAmount = totalPrice.multiply(BigDecimal.valueOf(0.3)).setScale(0, RoundingMode.HALF_UP);
+
+        // 4. Tìm phong cách MakeupLayout nếu có
+        MakeupLayout selectedLayout = null;
+        if (request.getLayoutId() != null) {
+            selectedLayout = makeupLayoutRepository.findById(request.getLayoutId()).orElse(null);
+        } else if (request.getLayout() != null && !request.getLayout().isBlank()) {
+            selectedLayout = makeupLayoutRepository.findByCode(request.getLayout()).orElse(null);
+        }
+
+        String layoutName = request.getLayout();
+        if ((layoutName == null || layoutName.isBlank()) && selectedLayout != null) {
+            layoutName = selectedLayout.getName();
+        }
+
+        if (request.getContactPhone() != null && !request.getContactPhone().isBlank()) {
+            customer.setPhone(request.getContactPhone().trim());
+            userRepository.save(customer);
+        }
+
+        String finalNotes = request.getNotes();
+        boolean hasContactPhone = request.getContactPhone() != null && !request.getContactPhone().isBlank();
+        boolean hasContactEmail = request.getContactEmail() != null && !request.getContactEmail().isBlank();
+        if (hasContactPhone || hasContactEmail) {
+            StringBuilder contactInfo = new StringBuilder("[Xác nhận liên hệ:");
+            if (hasContactPhone) {
+                contactInfo.append(" SĐT ").append(request.getContactPhone().trim());
+            }
+            if (hasContactEmail) {
+                contactInfo.append(" | Email: ").append(request.getContactEmail().trim());
+            }
+            contactInfo.append("]");
+            finalNotes = (finalNotes != null && !finalNotes.isBlank()) ? (finalNotes + "\n" + contactInfo) : contactInfo.toString();
+        }
 
         // 4. Lưu đơn Booking cha
         Booking booking = Booking.builder()
@@ -476,9 +621,13 @@ public class BookingService {
                 .executionMode(request.getExecutionMode())
                 .artistCount(request.getArtistCount() != null ? request.getArtistCount() : 1)
                 .dispatchPlan(request.getDispatchPlan() != null ? request.getDispatchPlan() : "SAVING")
-                .layout(request.getLayout())
+                .makeupLayout(selectedLayout)
+                .voucher(appliedVoucher)
+                .voucherCode(appliedVoucher != null ? appliedVoucher.getCode() : null)
+                .discountAmount(discountAmount)
+                .layout(layoutName)
                 .customerImage(request.getCustomerImage())
-                .notes(request.getNotes())
+                .notes(finalNotes)
                 .status(BookingStatus.PENDING_PAYMENT)
                 .totalPrice(totalPrice)
                 .surcharge(surcharge)
@@ -530,36 +679,173 @@ public class BookingService {
         return mapToResponse(savedBooking, servicesPrice, travelFee, homeAddress, distanceKm, itemResponses);
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * Tự động quét và hủy các đơn hàng ở trạng thái PENDING_PAYMENT quá 15 phút chưa hoàn tất cọc
+     */
+    @Scheduled(fixedRate = 60000)
+    @Transactional
+    public void cancelExpiredPendingBookings() {
+        LocalDateTime threshold = LocalDateTime.now().minusMinutes(15);
+        List<Booking> expiredBookings = bookingRepository.findByStatusAndCreatedAtBefore(BookingStatus.PENDING_PAYMENT, threshold);
+        for (Booking b : expiredBookings) {
+            b.setStatus(BookingStatus.CANCELLED);
+            String oldNotes = b.getNotes() != null ? b.getNotes() : "";
+            b.setNotes(("[Tự động hủy: Quá hạn 15 phút chưa thanh toán cọc] " + oldNotes).trim());
+            bookingRepository.save(b);
+            log.info("Tự động hủy đơn đặt lịch #{} do quá hạn 15 phút chưa hoàn tất thanh toán cọc VNPay", b.getId());
+        }
+    }
+
+    @Transactional
     public List<BookingResponse> getAllBookings() {
-        List<Booking> bookings = bookingRepository.findAllByOrderByBookingDateDescBookingTimeDesc();
+        // Quét đơn quá hạn trước
+        cancelExpiredPendingBookings();
+
+        // Đơn nào đặt sau thì hiện trước (sắp xếp theo ngày tạo createdAt và ID giảm dần)
+        List<Booking> bookings = bookingRepository.findAllByOrderByCreatedAtDescIdDesc();
+        for (Booking b : bookings) {
+            if (b.getNotes() != null && (b.getNotes().contains("[Lý do hủy") || b.getNotes().contains("[HOÀN CỌC") || b.getNotes().contains("[ĐÃ HOÀN CỌC"))) {
+                if (b.getStatus() != BookingStatus.CANCELLED) {
+                    b.setStatus(BookingStatus.CANCELLED);
+                    bookingRepository.save(b);
+                }
+            }
+        }
+        // Trang Admin chỉ hiện đơn đã cọc hoặc chọn thanh toán tại studio (loại bỏ đơn PENDING_PAYMENT thanh toán sau)
         return bookings.stream()
+                .filter(b -> b.getStatus() != BookingStatus.PENDING_PAYMENT)
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<BookingResponse> getMyBookings(UserPrincipal currentUser) {
+        cancelExpiredPendingBookings();
+
         List<Booking> bookings;
         if ("ROLE_ADMIN".equals(currentUser.getRole())) {
             bookings = bookingRepository.findAllByOrderByCreatedAtDesc();
         } else {
             bookings = bookingRepository.findByUserIdOrderByCreatedAtDesc(currentUser.getId());
         }
-        return bookings.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+
+        // Tự động kiểm tra và chuẩn hóa trạng thái CANCELLED cho các đơn có ghi chú hủy
+        for (Booking b : bookings) {
+            if (b.getNotes() != null && (b.getNotes().contains("[Lý do hủy") || b.getNotes().contains("[HOÀN CỌC") || b.getNotes().contains("[ĐÃ HOÀN CỌC") || b.getNotes().contains("[Tự động hủy"))) {
+                if (b.getStatus() != BookingStatus.CANCELLED) {
+                    b.setStatus(BookingStatus.CANCELLED);
+                    bookingRepository.save(b);
+                }
+            }
+        }
+
+        if ("ROLE_ADMIN".equals(currentUser.getRole())) {
+            return bookings.stream()
+                    .filter(b -> b.getStatus() != BookingStatus.PENDING_PAYMENT)
+                    .map(this::mapToResponse)
+                    .collect(Collectors.toList());
+        } else {
+            return bookings.stream()
+                    .map(this::mapToResponse)
+                    .collect(Collectors.toList());
+        }
     }
 
     @Transactional
     public BookingResponse updateBookingStatus(Long id, BookingStatus newStatus) {
         Booking booking = bookingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", id));
+
+        // Kiểm tra nếu đơn đặt lịch đã bị hủy thì không cho phép chuyển trạng thái khác (đặc biệt là COMPLETED)
+        boolean hasCancelNote = booking.getNotes() != null && (booking.getNotes().contains("[Lý do hủy") || booking.getNotes().contains("[HOÀN CỌC") || booking.getNotes().contains("[ĐÃ HOÀN CỌC") || booking.getNotes().contains("[Tự động hủy"));
+        if ((booking.getStatus() == BookingStatus.CANCELLED || hasCancelNote) && newStatus != BookingStatus.CANCELLED) {
+            throw new BadRequestException("Đơn đặt lịch đã bị hủy, không thể thay đổi trạng thái sang " + newStatus);
+        }
+
+        if (newStatus == BookingStatus.COMPLETED) {
+            List<Payment> payments = paymentRepository.findByBookingId(id);
+            BigDecimal totalPaid = BigDecimal.ZERO;
+            if (payments != null) {
+                for (Payment p : payments) {
+                    if (p.getStatus() == PaymentStatus.PAID) {
+                        totalPaid = totalPaid.add(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
+                    }
+                }
+            }
+            BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
+            boolean hasCollectedNote = booking.getNotes() != null && booking.getNotes().contains("[ĐÃ THU ĐỦ TIỀN");
+            boolean isFullyPaid = hasCollectedNote || (totalPrice.compareTo(BigDecimal.ZERO) > 0 && totalPaid.compareTo(totalPrice) >= 0) || (totalPrice.compareTo(BigDecimal.ZERO) == 0);
+            if (!isFullyPaid) {
+                throw new BadRequestException("Bạn phải bấm xác nhận 'Đã Thu Tiền' từ khách hàng trước khi hoàn thành đơn đặt lịch!");
+            }
+        }
+
         booking.setStatus(newStatus);
         Booking updated = bookingRepository.save(booking);
         log.info("Cập nhật trạng thái đơn đặt lịch ID: {} sang {}", id, newStatus);
         return mapToResponse(updated);
     }
+
+    @Transactional
+    public BookingResponse collectPayment(Long id) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", id));
+
+        List<Payment> payments = paymentRepository.findByBookingId(id);
+        BigDecimal totalPaid = BigDecimal.ZERO;
+        if (payments != null) {
+            for (Payment p : payments) {
+                if (p.getStatus() == PaymentStatus.PAID) {
+                    totalPaid = totalPaid.add(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
+                }
+            }
+        }
+
+        BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
+        BigDecimal remaining = totalPrice.subtract(totalPaid).max(BigDecimal.ZERO);
+
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            Payment cashPayment = Payment.builder()
+                    .booking(booking)
+                    .amount(remaining)
+                    .paymentMethod(PaymentMethod.CASH)
+                    .status(PaymentStatus.PAID)
+                    .transactionCode("ADMIN_COLLECTED_" + id + "_" + System.currentTimeMillis())
+                    .paymentDate(LocalDateTime.now())
+                    .build();
+            paymentRepository.save(cashPayment);
+        }
+
+        String currentNotes = booking.getNotes() != null ? booking.getNotes() : "";
+        if (!currentNotes.contains("[ĐÃ THU ĐỦ TIỀN")) {
+            booking.setNotes(("[ĐÃ THU ĐỦ TIỀN] " + currentNotes).trim());
+            bookingRepository.save(booking);
+        }
+
+        log.info("Admin đã xác nhận thu tiền cho đơn đặt lịch ID: {}", id);
+        return mapToResponse(booking);
+    }
+
+    @Transactional
+    public BookingResponse confirmRefund(Long id) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", id));
+        String currentNotes = booking.getNotes() != null ? booking.getNotes() : "";
+        String updatedNotes;
+        if (currentNotes.contains("[HOÀN CỌC")) {
+            updatedNotes = currentNotes.replace("[HOÀN CỌC", "[ĐÃ HOÀN CỌC");
+        } else if (!currentNotes.contains("[ĐÃ HOÀN CỌC")) {
+            updatedNotes = "[ĐÃ HOÀN CỌC] " + currentNotes;
+        } else {
+            updatedNotes = currentNotes;
+        }
+        booking.setNotes(updatedNotes.trim());
+        booking.setStatus(BookingStatus.CANCELLED);
+        Booking saved = bookingRepository.save(booking);
+        log.info("Admin đã xác nhận hoàn cọc cho đơn booking ID: {}", id);
+        return mapToResponse(saved);
+    }
+
 
     @Transactional
     public BookingResponse cancelBooking(Long id, UserPrincipal currentUser, String reason) {
@@ -582,6 +868,9 @@ public class BookingService {
         }
 
         booking.setStatus(BookingStatus.CANCELLED);
+        if (booking.getVoucher() != null) {
+            voucherService.releasePersonalVoucher(booking.getUser().getId(), booking.getVoucher().getId());
+        }
         if (reason != null && !reason.trim().isEmpty()) {
             String currentNotes = booking.getNotes() != null ? booking.getNotes() : "";
             booking.setNotes((currentNotes + " [Lý do hủy: " + reason.trim() + "]").trim());
@@ -590,6 +879,209 @@ public class BookingService {
         Booking updated = bookingRepository.save(booking);
         log.info("Người dùng {} đã hủy đơn đặt lịch ID: {}, lý do: {}", currentUser.getUsername(), id, reason);
         return mapToResponse(updated);
+    }
+
+    private boolean isArtistAvailableExcludingBooking(Long artistId, LocalDate date, LocalTime startTime, LocalTime endTime, Long excludeBookingId) {
+        MakeupArtist artist = makeupArtistRepository.findById(artistId).orElse(null);
+        if (artist == null || !Boolean.TRUE.equals(artist.getActive())) {
+            return false;
+        }
+        Optional<ArtistSchedule> scheduleOpt = artistScheduleRepository.findByMakeupArtistIdAndScheduleDate(artistId, date);
+        if (scheduleOpt.isPresent()) {
+            ArtistSchedule schedule = scheduleOpt.get();
+            if (Boolean.TRUE.equals(schedule.getIsDayOff())) {
+                return false;
+            }
+            if (startTime.isBefore(schedule.getStartTime()) || endTime.isAfter(schedule.getEndTime())) {
+                return false;
+            }
+        }
+        List<BookingItem> overlaps = bookingItemRepository.findOverlappingItems(artistId, date, startTime, endTime);
+        for (BookingItem conflict : overlaps) {
+            if (conflict.getBooking() != null && !conflict.getBooking().getId().equals(excludeBookingId)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Transactional
+    public BookingResponse updateCustomerBooking(Long id, UserPrincipal currentUser, CustomerBookingUpdateRequest request) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", id));
+
+        boolean isOwner = booking.getUser().getId().equals(currentUser.getId());
+        boolean isAdmin = "ROLE_ADMIN".equals(currentUser.getRole());
+
+        if (!isOwner && !isAdmin) {
+            throw new BadRequestException("Bạn không có quyền chỉnh sửa đơn đặt lịch này");
+        }
+
+        boolean isCancelled = booking.getStatus() == BookingStatus.CANCELLED
+                || (booking.getNotes() != null && (booking.getNotes().contains("[Lý do hủy")
+                || booking.getNotes().contains("[HOÀN CỌC")
+                || booking.getNotes().contains("[ĐÃ HOÀN CỌC")
+                || booking.getNotes().contains("[Tự động hủy")));
+        if (isCancelled) {
+            throw new BadRequestException("Không thể chỉnh sửa đơn đặt lịch đã bị hủy");
+        }
+
+        if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.IN_PROGRESS) {
+            throw new BadRequestException("Không thể chỉnh sửa đơn đặt lịch đang thực hiện hoặc đã hoàn thành");
+        }
+
+        // Kiểm tra điều kiện 1: Thời gian bắt đầu của đơn hiện tại phải cách thời điểm hiện tại tối thiểu 12 tiếng
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime currentStart = LocalDateTime.of(booking.getBookingDate(), booking.getBookingTime());
+        long minutesUntilCurrentStart = java.time.Duration.between(now, currentStart).toMinutes();
+        if (!isAdmin && minutesUntilCurrentStart < 12 * 60) {
+            throw new BadRequestException(String.format(
+                    "Chỉ được phép chỉnh sửa đơn hẹn trước ít nhất 12 tiếng so với giờ bắt đầu hiện tại (%s ngày %s)!",
+                    booking.getBookingTime(), booking.getBookingDate()));
+        }
+
+        LocalDate newDate = request.getBookingDate();
+        LocalTime newTime = request.getBookingTime();
+
+        if (newTime.isBefore(LocalTime.of(6, 0)) || newTime.isAfter(LocalTime.of(21, 0))) {
+            throw new BadRequestException("Giờ bắt đầu phải nằm trong khung giờ phục vụ từ 06:00 đến 21:00");
+        }
+
+        // Kiểm tra điều kiện 2: Thời gian hẹn mới cũng phải cách thời điểm hiện tại tối thiểu 12 tiếng
+        LocalDateTime newStart = LocalDateTime.of(newDate, newTime);
+        long minutesUntilNewStart = java.time.Duration.between(now, newStart).toMinutes();
+        if (!isAdmin && minutesUntilNewStart < 12 * 60) {
+            throw new BadRequestException(String.format(
+                    "Thời gian hẹn mới (%s ngày %s) phải cách thời điểm hiện tại tối thiểu 12 tiếng!",
+                    newTime, newDate));
+        }
+
+        if (!newDate.equals(booking.getBookingDate()) || !newTime.equals(booking.getBookingTime())) {
+
+            List<BookingItem> items = bookingItemRepository.findByBookingId(booking.getId());
+            LocalTime oldBookingTime = booking.getBookingTime();
+            List<MakeupArtist> activeArtists = makeupArtistRepository.findAll().stream()
+                    .filter(a -> Boolean.TRUE.equals(a.getActive()))
+                    .sorted(createFairWorkloadComparator(newDate))
+                    .toList();
+
+            LocalTime maxItemEnd = newTime;
+            // Track slots assigned within this booking during update
+            Map<Long, List<LocalTime[]>> assignedInSameBooking = new HashMap<>();
+
+            for (BookingItem item : items) {
+                long offsetMins = oldBookingTime != null && item.getStartTime() != null
+                        ? Math.max(0, java.time.Duration.between(oldBookingTime, item.getStartTime()).toMinutes())
+                        : 0;
+                long durationMins = (item.getStartTime() != null && item.getEndTime() != null)
+                        ? java.time.Duration.between(item.getStartTime(), item.getEndTime()).toMinutes()
+                        : (item.getMakeupService() != null && item.getMakeupService().getDuration() != null
+                                ? item.getMakeupService().getDuration() : 60);
+                if (durationMins <= 0) {
+                    durationMins = 60;
+                }
+
+                LocalTime itemNewStart = newTime.plusMinutes(offsetMins);
+                LocalTime itemNewEnd = itemNewStart.plusMinutes(durationMins);
+                if (itemNewEnd.isAfter(maxItemEnd)) {
+                    maxItemEnd = itemNewEnd;
+                }
+
+                MakeupArtist chosenArtist = null;
+                MakeupArtist currentArtist = item.getMakeupArtist();
+
+                if (currentArtist != null && isArtistAvailableExcludingBooking(currentArtist.getId(), newDate, itemNewStart, itemNewEnd, booking.getId())) {
+                    boolean internalConflict = assignedInSameBooking.getOrDefault(currentArtist.getId(), Collections.emptyList())
+                            .stream().anyMatch(slot -> slot[0].isBefore(itemNewEnd) && slot[1].isAfter(itemNewStart));
+                    if (!internalConflict) {
+                        chosenArtist = currentArtist;
+                    }
+                }
+
+                if (chosenArtist == null) {
+                    for (MakeupArtist candidate : activeArtists) {
+                        if (isArtistAvailableExcludingBooking(candidate.getId(), newDate, itemNewStart, itemNewEnd, booking.getId())) {
+                            boolean internalConflict = assignedInSameBooking.getOrDefault(candidate.getId(), Collections.emptyList())
+                                    .stream().anyMatch(slot -> slot[0].isBefore(itemNewEnd) && slot[1].isAfter(itemNewStart));
+                            if (!internalConflict) {
+                                chosenArtist = candidate;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (chosenArtist == null) {
+                    throw new BadRequestException(String.format(
+                            "Khung giờ mới (%s - %s ngày %s) đã kín lịch tất cả chuyên viên trang điểm. Quý khách vui lòng chọn khung giờ khác!",
+                            itemNewStart, itemNewEnd, newDate));
+                }
+
+                item.setMakeupArtist(chosenArtist);
+                item.setStartTime(itemNewStart);
+                item.setEndTime(itemNewEnd);
+                bookingItemRepository.save(item);
+
+                assignedInSameBooking.computeIfAbsent(chosenArtist.getId(), k -> new ArrayList<>())
+                        .add(new LocalTime[]{itemNewStart, itemNewEnd});
+            }
+
+            booking.setBookingDate(newDate);
+            booking.setBookingTime(newTime);
+            if (booking.getTargetEndTime() != null) {
+                booking.setTargetEndTime(maxItemEnd);
+            }
+        }
+
+        // Cập nhật phong cách (Layout)
+        if (request.getLayout() != null) {
+            String trimmedLayout = request.getLayout().trim();
+            booking.setLayout(trimmedLayout.isEmpty() ? null : trimmedLayout);
+            if (!trimmedLayout.isEmpty()) {
+                makeupLayoutRepository.findByCode(trimmedLayout)
+                        .or(() -> makeupLayoutRepository.findAll().stream()
+                                .filter(l -> trimmedLayout.equalsIgnoreCase(l.getName()))
+                                .findFirst())
+                        .ifPresent(booking::setMakeupLayout);
+            }
+        }
+
+        // Cập nhật ảnh chân dung
+        if (request.getCustomerImage() != null) {
+            String trimmedImg = request.getCustomerImage().trim();
+            booking.setCustomerImage(trimmedImg.isEmpty() ? null : trimmedImg);
+        }
+
+        // Cập nhật số điện thoại khách hàng
+        if (request.getContactPhone() != null && !request.getContactPhone().isBlank()) {
+            User customer = booking.getUser();
+            customer.setPhone(request.getContactPhone().trim());
+            userRepository.save(customer);
+        }
+
+        // Cập nhật địa chỉ nếu là đơn tại nhà (HOME)
+        if (booking.getLocationType() == LocationType.HOME && request.getAddress() != null && !request.getAddress().isBlank()) {
+            BookingAddress bookingAddress = booking.getBookingAddress();
+            if (bookingAddress != null) {
+                bookingAddress.setAddress(request.getAddress().trim());
+                bookingAddressRepository.save(bookingAddress);
+            }
+        }
+
+        // Cập nhật ghi chú (giữ lại các tag hệ thống nếu có)
+        if (request.getNotes() != null) {
+            String existingNotes = booking.getNotes() != null ? booking.getNotes() : "";
+            boolean hadCollectedTag = existingNotes.contains("[ĐÃ THU ĐỦ TIỀN]");
+            String cleanUserNote = request.getNotes().trim();
+            if (hadCollectedTag && !cleanUserNote.contains("[ĐÃ THU ĐỦ TIỀN]")) {
+                cleanUserNote = ("[ĐÃ THU ĐỦ TIỀN] " + cleanUserNote).trim();
+            }
+            booking.setNotes(cleanUserNote);
+        }
+
+        Booking saved = bookingRepository.save(booking);
+        log.info("Khách hàng {} đã cập nhật đơn đặt lịch #{}", currentUser.getUsername(), id);
+        return mapToResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -654,6 +1146,11 @@ public class BookingService {
                     busyArtists.add(a);
                 }
             }
+
+            // Sắp xếp các chuyên viên theo thuật toán cân bằng tải công việc trong tháng (Fair Workload Balancing)
+            Comparator<MakeupArtist> fairComparator = createFairWorkloadComparator(request.getBookingDate());
+            availableArtists.sort(fairComparator);
+            busyArtists.sort(fairComparator);
 
             if (availableArtists.isEmpty()) {
                 throw new BadRequestException(String.format("Tất cả chuyên viên đều đã có lịch hẹn kín hoặc bận trong khung giờ %s - %s ngày %s. Quý khách vui lòng chọn khung giờ khác!",
@@ -735,6 +1232,8 @@ public class BookingService {
         // Chế độ tương thích ngược cũ (Legacy SINGLE, PARALLEL, SEQUENTIAL, ASSISTED)
         LocalTime currentPointer = request.getBookingTime();
         Set<Long> parallelArtistIds = new HashSet<>();
+        Comparator<MakeupArtist> legacyFairComparator = createFairWorkloadComparator(request.getBookingDate());
+        List<MakeupArtist> activeArtistsSorted = activeArtists.stream().sorted(legacyFairComparator).toList();
 
         for (int i = 0; i < request.getItems().size(); i++) {
             BookingItemRequest itemReq = request.getItems().get(i);
@@ -768,24 +1267,24 @@ public class BookingService {
                 if (resolvedArtistId == null || parallelArtistIds.contains(resolvedArtistId)) {
                     final LocalTime fStart = slotStart;
                     final LocalTime fEnd = slotEnd;
-                    resolvedArtistId = activeArtists.stream()
+                    resolvedArtistId = activeArtistsSorted.stream()
                             .map(MakeupArtist::getId)
                             .filter(id -> !parallelArtistIds.contains(id) && checkSlotAvailability(id, request.getBookingDate(), fStart, fEnd))
                             .findFirst()
-                            .orElse(activeArtists.stream()
+                            .orElse(activeArtistsSorted.stream()
                                     .map(MakeupArtist::getId)
                                     .filter(id -> !parallelArtistIds.contains(id))
                                     .findFirst()
-                                    .orElse(activeArtists.get(i % activeArtists.size()).getId()));
+                                    .orElse(activeArtistsSorted.get(i % activeArtistsSorted.size()).getId()));
                 }
             } else if (resolvedArtistId == null) {
                 final LocalTime fStart = slotStart;
                 final LocalTime fEnd = slotEnd;
-                resolvedArtistId = activeArtists.stream()
+                resolvedArtistId = activeArtistsSorted.stream()
                         .map(MakeupArtist::getId)
                         .filter(id -> checkSlotAvailability(id, request.getBookingDate(), fStart, fEnd))
                         .findFirst()
-                        .orElse(activeArtists.get(0).getId());
+                        .orElse(activeArtistsSorted.get(0).getId());
             }
 
             final Long artistId = resolvedArtistId;
@@ -864,6 +1363,11 @@ public class BookingService {
                     .startTime(item.getStartTime())
                     .endTime(item.getEndTime())
                     .price(item.getPrice())
+                    .cancelRequested(item.getCancelRequested())
+                    .cancelReason(item.getCancelReason())
+                    .cancelStatus(item.getCancelStatus())
+                    .cancelRequestedAt(item.getCancelRequestedAt())
+                    .originalArtistId(item.getOriginalArtistId())
                     .build());
         }
 
@@ -891,13 +1395,24 @@ public class BookingService {
             List<BookingItemResponse> itemResponses
     ) {
         List<Payment> payments = paymentRepository.findByBookingId(booking.getId());
+        BigDecimal totalPaid = BigDecimal.ZERO;
         String paymentMethod = null;
         String paymentStatus = null;
         if (payments != null && !payments.isEmpty()) {
+            for (Payment p : payments) {
+                if (p.getStatus() == PaymentStatus.PAID) {
+                    totalPaid = totalPaid.add(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
+                }
+            }
             Payment latestPayment = payments.get(payments.size() - 1);
             paymentMethod = latestPayment.getPaymentMethod() != null ? latestPayment.getPaymentMethod().name() : null;
             paymentStatus = latestPayment.getStatus() != null ? latestPayment.getStatus().name() : null;
         }
+
+        BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
+        boolean hasCollectedNote = booking.getNotes() != null && booking.getNotes().contains("[ĐÃ THU ĐỦ TIỀN");
+        boolean isFullyPaid = hasCollectedNote || (totalPrice.compareTo(BigDecimal.ZERO) > 0 && totalPaid.compareTo(totalPrice) >= 0) || (totalPrice.compareTo(BigDecimal.ZERO) == 0);
+        BigDecimal remainingToCollect = isFullyPaid ? BigDecimal.ZERO : totalPrice.subtract(totalPaid).max(BigDecimal.ZERO);
 
         return BookingResponse.builder()
                 .id(booking.getId())
@@ -915,16 +1430,24 @@ public class BookingService {
                 .servicesPrice(servicesPrice)
                 .travelFee(travelFee)
                 .surcharge(booking.getSurcharge() != null ? booking.getSurcharge() : BigDecimal.ZERO)
+                .discountAmount(booking.getDiscountAmount() != null ? booking.getDiscountAmount() : BigDecimal.ZERO)
+                .voucherId(booking.getVoucher() != null ? booking.getVoucher().getId() : null)
+                .voucherCode(booking.getVoucherCode() != null ? booking.getVoucherCode() : (booking.getVoucher() != null ? booking.getVoucher().getCode() : null))
                 .totalPrice(booking.getTotalPrice())
                 .depositAmount(booking.getDepositAmount())
                 .address(address)
                 .distanceKm(distanceKm)
                 .items(itemResponses)
-                .layout(booking.getLayout())
+                .layoutId(booking.getMakeupLayout() != null ? booking.getMakeupLayout().getId() : null)
+                .layoutCode(booking.getMakeupLayout() != null ? booking.getMakeupLayout().getCode() : null)
+                .layout(booking.getMakeupLayout() != null ? booking.getMakeupLayout().getName() : booking.getLayout())
                 .customerImage(booking.getCustomerImage())
                 .notes(booking.getNotes())
                 .paymentMethod(paymentMethod)
                 .paymentStatus(paymentStatus)
+                .totalPaid(totalPaid)
+                .remainingToCollect(remainingToCollect)
+                .isFullyPaid(isFullyPaid)
                 .createdAt(booking.getCreatedAt())
                 .build();
     }

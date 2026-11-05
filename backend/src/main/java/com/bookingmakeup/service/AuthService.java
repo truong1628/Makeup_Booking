@@ -71,6 +71,9 @@ public class AuthService {
                 .email(savedUser.getEmail())
                 .fullName(savedUser.getFullName())
                 .role(savedUser.getRole().name())
+                .phone(savedUser.getPhone())
+                .avatar(savedUser.getAvatar())
+                .address(savedUser.getAddress())
                 .build();
     }
 
@@ -105,7 +108,6 @@ public class AuthService {
         MakeupArtist makeupArtist = MakeupArtist.builder()
                 .user(savedUser)
                 .experience(request.getExperience() != null ? request.getExperience() : "Chưa cập nhật kinh nghiệm")
-                .specialties(request.getSpecialties() != null ? request.getSpecialties() : "Trang điểm tự nhiên, cô dâu, dự tiệc")
                 .workingHours(request.getWorkingHours() != null ? request.getWorkingHours() : "08:00 - 20:00")
                 .workingDays(request.getWorkingDays() != null ? request.getWorkingDays() : "Thứ 2 - Chủ Nhật")
                 .active(true)
@@ -123,6 +125,9 @@ public class AuthService {
                 .email(savedUser.getEmail())
                 .fullName(savedUser.getFullName())
                 .role(savedUser.getRole().name())
+                .phone(savedUser.getPhone())
+                .avatar(savedUser.getAvatar())
+                .address(savedUser.getAddress())
                 .build();
     }
 
@@ -136,6 +141,8 @@ public class AuthService {
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         String token = jwtUtils.generateToken(principal);
 
+        User user = userRepository.findByEmail(email).orElse(null);
+
         log.info("Người dùng đăng nhập thành công: {}", email);
 
         return AuthResponse.builder()
@@ -144,6 +151,9 @@ public class AuthService {
                 .email(principal.getEmail())
                 .fullName(principal.getFullName())
                 .role(principal.getRole())
+                .phone(user != null ? user.getPhone() : null)
+                .avatar(user != null ? user.getAvatar() : null)
+                .address(user != null ? user.getAddress() : null)
                 .build();
     }
 }

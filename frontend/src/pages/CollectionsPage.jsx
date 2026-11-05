@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Sparkles, Search, Filter, Eye, Calendar, User,
-  Tag, X, ChevronRight, ArrowRight, Heart, Share2,
-  CheckCircle2, Clock, Phone, Award, SlidersHorizontal
+  Sparkles, Search, Eye, Calendar, User,
+  X, ChevronLeft, ChevronRight, ArrowRight,
+  CheckCircle2, SlidersHorizontal, Layers
 } from 'lucide-react';
 import { portfolioService } from '../services/portfolioService';
 import { useToast } from '../context/ToastContext';
+import { LAYOUT_OPTIONS } from './BookingPage';
 
 const DEFAULT_CATEGORIES = [
   'Tất cả',
@@ -18,19 +19,74 @@ const DEFAULT_CATEGORIES = [
   'Thời Trang'
 ];
 
+// Trích xuất danh sách ảnh phụ của tác phẩm
+const extractPortfolioSubImages = (item) => {
+  if (!item) return [];
+  if (Array.isArray(item.gallery) && item.gallery.length > 0) {
+    return item.gallery.map((g) => g.imageUrl).filter(Boolean);
+  }
+  if (item.additionalImages) {
+    const raw = String(item.additionalImages).trim();
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map((s) => String(s).trim()).filter(Boolean);
+    } catch {
+      if (raw.startsWith('data:image/')) return [raw];
+      return raw
+        .split(/,(?=\s*https?:\/\/)/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+};
+
 const CollectionsPage = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const [searchParams] = useSearchParams();
+
+  const urlLayout = searchParams.get('layout');
+  const urlSearch = searchParams.get('search');
+  const urlCategory = searchParams.get('category');
+  const urlArtistId = searchParams.get('artistId');
+  const fromBookingParam = searchParams.get('fromBooking') === 'true';
+
+  // Đọc bản nháp đặt lịch từ sessionStorage nếu có
+  const [bookingDraft] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem('makeup_booking_draft');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const isFromBooking = fromBookingParam || Boolean(bookingDraft);
+  const activeBookingLayout = urlLayout || bookingDraft?.selectedLayout || 'Tone Makeup';
 
   const [portfolios, setPortfolios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
 
-  // Filters state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Tất cả');
-  const [selectedArtistId, setSelectedArtistId] = useState('all');
+  // Filters state - khởi tạo theo tham số URL nếu chuyển từ trang đặt lịch
+  const [searchTerm, setSearchTerm] = useState(urlSearch || '');
+  const [selectedCategory, setSelectedCategory] = useState(urlCategory || 'Tất cả');
+  const [selectedArtistId, setSelectedArtistId] = useState(urlArtistId || 'all');
   const [sortBy, setSortBy] = useState('newest'); // 'newest' | 'popular'
+
+  // Đồng bộ lại filters nếu searchParams thay đổi
+  useEffect(() => {
+    if (urlSearch !== null && urlSearch !== undefined) {
+      setSearchTerm(urlSearch);
+    }
+    if (urlCategory) {
+      setSelectedCategory(urlCategory);
+    }
+    if (urlArtistId) {
+      setSelectedArtistId(urlArtistId);
+    }
+  }, [urlSearch, urlCategory, urlArtistId]);
 
   // Modal detail state
   const [selectedPortfolio, setSelectedPortfolio] = useState(null);
@@ -54,7 +110,7 @@ const CollectionsPage = () => {
           const uniqueCats = ['Tất cả', ...new Set([...catData, 'Cô Dâu', 'Dự Tiệc', 'Kỷ Yếu'])];
           setCategories(uniqueCats);
         }
-      } catch (catErr) {
+      } catch {
         // Fallback default categories
       }
     } catch (err) {
@@ -97,9 +153,9 @@ const CollectionsPage = () => {
     return list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   }, [portfolios, sortBy]);
 
-  const handleOpenDetail = async (item) => {
+  const handleOpenDetail = async (item, initialIndex = 0) => {
     setSelectedPortfolio(item);
-    setActiveImageIndex(0);
+    setActiveImageIndex(initialIndex);
     // Call getById to increment view count on backend
     try {
       const detailed = await portfolioService.getPortfolioById(item.id);
@@ -124,82 +180,171 @@ const CollectionsPage = () => {
     setSortBy('newest');
   };
 
-  // Get gallery images array for the active modal
+  // Tiếp tục tiến trình đặt lịch (quay lại Bước 4 trong BookingPage)
+  const handleResumeBooking = () => {
+    try {
+      const raw = sessionStorage.getItem('makeup_booking_draft');
+      const draft = raw ? JSON.parse(raw) : { currentStep: 4 };
+      if (urlLayout && !draft.selectedLayout) {
+        draft.selectedLayout = urlLayout;
+      }
+      draft.currentStep = 4;
+      sessionStorage.setItem('makeup_booking_draft', JSON.stringify(draft));
+    } catch (e) {
+      console.error(e);
+    }
+    navigate('/booking?resume=true');
+  };
+
+  // Chọn mẫu ảnh này trong bộ sưu tập và tiếp tục đặt lịch
+  const handleResumeBookingWithPortfolio = (portfolio) => {
+    try {
+      const raw = sessionStorage.getItem('makeup_booking_draft');
+      const draft = raw ? JSON.parse(raw) : { currentStep: 4 };
+      draft.currentStep = 4;
+      if (portfolio) {
+        draft.selectedPortfolioId = portfolio.id;
+        draft.selectedPortfolioTitle = portfolio.title;
+        draft.selectedPortfolioImage = portfolio.imageUrl;
+        draft.selectedPortfolioArtist = portfolio.artistName;
+
+        // Nếu portfolio có category hoặc từ khóa trùng với layout trong LAYOUT_OPTIONS, cập nhật layout tương ứng
+        if (portfolio.categoryName) {
+          const matched = LAYOUT_OPTIONS.find((l) =>
+            (l.category && l.category.toLowerCase() === portfolio.categoryName.toLowerCase()) ||
+            (l.searchKeyword && portfolio.title && portfolio.title.toLowerCase().includes(l.searchKeyword.toLowerCase()))
+          );
+          if (matched) {
+            draft.selectedLayout = matched.name;
+          }
+        }
+
+        if (!draft.bookingNotes) {
+          draft.bookingNotes = `Khách chọn tham khảo tác phẩm: "${portfolio.title}" (${portfolio.categoryName || 'Bộ sưu tập'})`;
+        } else if (!draft.bookingNotes.includes(portfolio.title)) {
+          draft.bookingNotes += `\n[Tham khảo tác phẩm: ${portfolio.title}]`;
+        }
+      }
+      sessionStorage.setItem('makeup_booking_draft', JSON.stringify(draft));
+    } catch (e) {
+      console.error(e);
+    }
+    navigate('/booking?resume=true');
+  };
+
+  // Get gallery images array for the active modal (Ưu tiên gallery từ bảng portfolio_images chuẩn 1NF)
   const modalImages = useMemo(() => {
     if (!selectedPortfolio) return [];
-    const list = [selectedPortfolio.imageUrl];
-    if (selectedPortfolio.additionalImages) {
-      try {
-        const parsed = JSON.parse(selectedPortfolio.additionalImages);
-        if (Array.isArray(parsed)) list.push(...parsed);
-      } catch {
-        const split = selectedPortfolio.additionalImages.split(',').map((s) => s.trim()).filter(Boolean);
-        list.push(...split);
-      }
-    }
-    return list.filter(Boolean);
+    const subImgs = extractPortfolioSubImages(selectedPortfolio);
+    return [selectedPortfolio.imageUrl, ...subImgs].filter(Boolean);
   }, [selectedPortfolio]);
 
   return (
     <div className="min-h-screen bg-[#faf8f5]">
-      {/* 1. Hero Header Banner */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-rose-950 via-slate-900 to-slate-900 text-white py-16 sm:py-24">
+      {/* 0. Thanh thông báo Sticky: Đang trong quá trình đặt lịch */}
+      {isFromBooking && (
+        <div className="sticky top-20 z-40 bg-gradient-to-r from-rose-700 via-pink-600 to-rose-700 text-white shadow-lg py-2.5 px-4 border-b border-rose-500/30 animate-in fade-in">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="flex h-2.5 w-2.5 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+              </span>
+              <div className="text-xs sm:text-sm truncate">
+                <span className="text-rose-100 font-normal">Đang đặt lịch (Bước 4) &bull; Layout đang xem: </span>
+                <strong className="text-white font-bold bg-white/20 px-2 py-0.5 rounded-md ml-1 truncate inline-block max-w-[180px] sm:max-w-xs align-middle">
+                  {activeBookingLayout}
+                </strong>
+              </div>
+            </div>
+
+            <button
+              onClick={handleResumeBooking}
+              className="shrink-0 inline-flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 rounded-xl bg-white text-rose-700 hover:bg-rose-50 font-bold text-xs shadow-md transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+            >
+              <Calendar className="w-3.5 h-3.5 text-rose-600" />
+              <span>Tiếp Tục Đặt Lịch</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 1. Hero Header Banner - Tối ưu thu gọn gọn gàng, thanh thoát */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-rose-950 via-slate-900 to-slate-900 text-white py-6 sm:py-8">
         {/* Ambient decorative elements */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rose-500/20 border border-rose-400/30 text-rose-300 text-xs font-semibold uppercase tracking-wider mb-6 animate-pulse">
-            <Sparkles className="w-4 h-4 text-amber-300" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-rose-500/20 border border-rose-400/30 text-rose-300 text-[11px] font-semibold uppercase tracking-wider mb-2 animate-pulse">
+            <Sparkles className="w-3 h-3 text-amber-300" />
             <span>Lookbook & Nghệ Thuật Trang Điểm</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white mb-6">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white mb-2">
             Bộ Sưu Tập <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-pink-300 to-amber-200">Tác Phẩm Makeup</span>
           </h1>
 
-          <p className="max-w-2xl mx-auto text-sm sm:text-base text-slate-300 font-light leading-relaxed mb-8">
-            Chiêm ngưỡng những layout makeup đỉnh cao được thực hiện trực tiếp bởi các Master Artist tại Lumière Studio. Tìm nguồn cảm hứng hoàn hảo cho ngày trọng đại của bạn.
+          <p className="max-w-xl mx-auto text-xs sm:text-sm text-slate-300 font-light leading-relaxed mb-4 line-clamp-1 sm:line-clamp-none">
+            Chiêm ngưỡng những layout makeup đỉnh cao được thực hiện trực tiếp bởi các Master Artist tại DungDorys Studio.
           </p>
 
           {/* Quick Search Bar inside Hero */}
-          <div className="max-w-2xl mx-auto relative">
-            <div className="relative flex items-center bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-1.5 shadow-2xl focus-within:border-rose-400 focus-within:bg-white/15 transition-all">
-              <Search className="w-5 h-5 text-rose-300 ml-3.5 shrink-0" />
+          <div className="max-w-xl mx-auto relative">
+            <div className="relative flex items-center bg-white/10 backdrop-blur-xl border border-white/20 rounded-xl p-1 shadow-xl focus-within:border-rose-400 focus-within:bg-white/15 transition-all">
+              <Search className="w-4 h-4 text-rose-300 ml-3 shrink-0" />
               <input
                 type="text"
-                placeholder="Tìm kiếm theo phong cách (Tone Thái, Hàn Quốc), tên thợ, cô dâu..."
+                placeholder="Tìm kiếm theo layout (Tone Thái, Hàn Quốc), tên thợ, cô dâu..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-transparent border-0 px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-0"
+                className="w-full bg-transparent border-0 px-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-0"
               />
               {searchTerm && (
                 <button
                   onClick={() => setSearchTerm('')}
-                  className="p-1.5 rounded-full hover:bg-white/20 text-slate-300 hover:text-white mr-1"
+                  className="p-1 rounded-full hover:bg-white/20 text-slate-300 hover:text-white mr-1"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           </div>
+
+          {/* Quick Notice when coming from Booking */}
+          {isFromBooking && (
+            <div className="mt-4 max-w-xl mx-auto p-3 rounded-xl bg-white/10 backdrop-blur-md border border-rose-300/30 text-center animate-in fade-in shadow-lg">
+              <p className="text-xs text-slate-200 mb-2">
+                ✨ Bạn đang tham khảo layout: <strong className="text-amber-200">{activeBookingLayout}</strong>. Nhấp vào ảnh để xem chi tiết hoặc bấm nút bên dưới.
+              </p>
+              <button
+                onClick={handleResumeBooking}
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-1.5 rounded-full bg-gradient-to-r from-rose-500 via-pink-500 to-rose-600 hover:from-rose-600 hover:to-pink-600 text-white font-bold text-xs shadow-md shadow-rose-900/40 hover:shadow-rose-600/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Tiếp Tục Đặt Lịch</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* 2. Interactive Filter & Control Bar */}
-      <section className="sticky top-20 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm py-4">
+      {/* 2. Interactive Filter & Control Bar - Thu gọn thanh thoát */}
+      <section className="sticky top-20 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-xs py-2.5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
             {/* Category Chips */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 lg:pb-0">
               {categories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shadow-sm ${
+                  className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200 ${
                     selectedCategory === cat
-                      ? 'bg-rose-600 text-white shadow-rose-500/25 shadow-md scale-105'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                      ? 'bg-rose-600 text-white shadow-xs font-semibold scale-102'
+                      : 'bg-slate-100/90 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                   }`}
                 >
                   {cat}
@@ -208,15 +353,15 @@ const CollectionsPage = () => {
             </div>
 
             {/* Dropdown Filters & Sorters */}
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {/* Filter by Artist */}
               {artistsList.length > 0 && (
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700">
-                  <User className="w-3.5 h-3.5 text-rose-500" />
+                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-700">
+                  <User className="w-3 h-3 text-rose-500" />
                   <select
                     value={selectedArtistId}
                     onChange={(e) => setSelectedArtistId(e.target.value)}
-                    className="bg-transparent border-none text-xs font-medium text-slate-700 focus:outline-none cursor-pointer pr-4"
+                    className="bg-transparent border-none text-xs font-medium text-slate-700 focus:outline-none cursor-pointer pr-2"
                   >
                     <option value="all">Tất cả Nghệ sĩ</option>
                     {artistsList.map((a) => (
@@ -229,12 +374,12 @@ const CollectionsPage = () => {
               )}
 
               {/* Sort by */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700">
-                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-700">
+                <SlidersHorizontal className="w-3 h-3 text-slate-500" />
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="bg-transparent border-none text-xs font-medium text-slate-700 focus:outline-none cursor-pointer pr-4"
+                  className="bg-transparent border-none text-xs font-medium text-slate-700 focus:outline-none cursor-pointer pr-2"
                 >
                   <option value="newest">Mới nhất</option>
                   <option value="popular">Xem nhiều nhất</option>
@@ -245,7 +390,7 @@ const CollectionsPage = () => {
               {(searchTerm || selectedCategory !== 'Tất cả' || selectedArtistId !== 'all') && (
                 <button
                   onClick={handleResetFilters}
-                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline px-2 py-1"
+                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline px-1.5 py-0.5"
                 >
                   Đặt lại
                 </button>
@@ -254,13 +399,13 @@ const CollectionsPage = () => {
           </div>
 
           {/* Result counter summary */}
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <span>
               Tìm thấy <strong className="text-slate-800 font-bold">{sortedPortfolios.length}</strong> tác phẩm nghệ thuật
             </span>
             {selectedCategory !== 'Tất cả' && (
               <span className="text-rose-600 font-medium">
-                Đang lọc: Phong cách "{selectedCategory}"
+                Đang lọc: "{selectedCategory}"
               </span>
             )}
           </div>
@@ -292,109 +437,189 @@ const CollectionsPage = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
-            {sortedPortfolios.map((item) => (
-              <div
-                key={item.id}
-                className="group bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col"
-              >
-                {/* Image & Badges */}
+            {sortedPortfolios.map((item) => {
+              const subImages = extractPortfolioSubImages(item);
+              const totalPhotos = (item.imageUrl ? 1 : 0) + subImages.length;
+
+              return (
                 <div
-                  className="relative aspect-[4/5] overflow-hidden bg-slate-100 cursor-pointer"
-                  onClick={() => handleOpenDetail(item)}
+                  key={item.id}
+                  className="group bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col"
                 >
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                    <span className="w-full py-2.5 rounded-xl bg-white/90 backdrop-blur-sm text-slate-900 text-xs font-bold text-center shadow-lg hover:bg-white transition-all flex items-center justify-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Xem Chi Tiết Tác Phẩm</span>
-                    </span>
-                  </div>
-
-                  {/* Category Pill Tag */}
-                  {item.categoryName && (
-                    <span className="absolute top-3 left-3 px-3 py-1 rounded-full bg-white/90 backdrop-blur-md text-rose-700 text-[11px] font-bold shadow-md border border-white/40">
-                      {item.categoryName}
-                    </span>
-                  )}
-
-                  {/* View count pill */}
-                  <span className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md text-white text-[10px] font-semibold flex items-center gap-1">
-                    <Eye className="w-3 h-3 text-rose-300" />
-                    <span>{item.viewCount || 0}</span>
-                  </span>
-                </div>
-
-                {/* Content details */}
-                <div className="p-5 flex-1 flex flex-col justify-between">
-                  <div>
-                    <h3
-                      onClick={() => handleOpenDetail(item)}
-                      className="text-base font-bold text-slate-800 line-clamp-1 hover:text-rose-600 cursor-pointer transition-colors mb-2"
-                      title={item.title}
-                    >
-                      {item.title}
-                    </h3>
-
-                    {item.description && (
-                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">
-                        {item.description}
-                      </p>
-                    )}
-
-                    {/* Tags */}
-                    {item.tags && (
-                      <div className="flex flex-wrap gap-1.5 mb-4">
-                        {item.tags.split(',').slice(0, 3).map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-100"
-                          >
-                            #{tag.trim()}
-                          </span>
-                        ))}
+                  {/* Image & Badges (Ấn vào ảnh chính để xem toàn bộ ảnh) */}
+                  <div
+                    className="relative aspect-[4/5] overflow-hidden bg-slate-900 cursor-pointer"
+                    onClick={() => handleOpenDetail(item, 0)}
+                    title="Nhấn vào ảnh để xem toàn bộ ảnh của tác phẩm"
+                  >
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-rose-950/20 to-slate-900 text-slate-500 group-hover:scale-105 transition-transform duration-500">
+                        <Sparkles className="w-10 h-10 text-rose-500/40 mb-2" />
+                        <span className="text-[11px] font-medium text-slate-400">Tác phẩm độc quyền</span>
                       </div>
                     )}
-                  </div>
-
-                  {/* Artist Info Footer */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-auto">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-rose-500 text-white font-bold flex items-center justify-center text-xs overflow-hidden shrink-0 shadow-sm">
-                        {item.artistAvatar ? (
-                          <img src={item.artistAvatar} alt={item.artistName} className="w-full h-full object-cover" />
-                        ) : (
-                          item.artistName?.charAt(0) || 'A'
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-800 truncate">{item.artistName}</p>
-                        <p className="text-[10px] text-slate-400 truncate">
-                          {item.artistExperience || 'Chuyên gia Makeup'}
-                        </p>
-                      </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
+                      <span className="w-full py-2.5 rounded-xl bg-white/95 backdrop-blur-sm text-slate-900 text-xs font-bold text-center shadow-lg hover:bg-white transition-all flex items-center justify-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Xem Chi Tiết ({totalPhotos} ảnh)</span>
+                      </span>
                     </div>
 
-                    <Link
-                      to="/booking"
-                      className="p-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all shadow-sm"
-                      title="Đặt lịch với thợ này"
-                    >
-                      <Calendar className="w-4 h-4" />
-                    </Link>
+                    {/* Category Pill Tag */}
+                    {item.categoryName && (
+                      <span className="absolute top-3 left-3 px-3 py-1 rounded-full bg-white/90 backdrop-blur-md text-rose-700 text-[11px] font-bold shadow-md border border-white/40">
+                        {item.categoryName}
+                      </span>
+                    )}
+
+                    {/* Photo count & View count pills */}
+                    <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                      {totalPhotos > 1 && (
+                        <span className="px-2.5 py-1 rounded-full bg-rose-600/90 backdrop-blur-md text-white text-[10px] font-bold flex items-center gap-1 shadow-md">
+                          <Layers className="w-3 h-3" />
+                          <span>{totalPhotos} ảnh</span>
+                        </span>
+                      )}
+                      <span className="px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md text-white text-[10px] font-semibold flex items-center gap-1">
+                        <Eye className="w-3 h-3 text-rose-300" />
+                        <span>{item.viewCount || 0}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Dải ảnh phụ thu nhỏ ngay dưới ảnh chính (nếu có nhiều ảnh) */}
+                  {subImages.length > 0 && (
+                    <div className="px-4 pt-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDetail(item, 0)}
+                        className="w-10 h-10 rounded-lg overflow-hidden border-2 border-rose-500 shrink-0 relative cursor-pointer"
+                        title="Ảnh chính"
+                      >
+                        <img src={item.imageUrl} alt="Ảnh chính" className="w-full h-full object-cover" />
+                      </button>
+                      {subImages.slice(0, 4).map((subUrl, sIdx) => (
+                        <button
+                          key={sIdx}
+                          type="button"
+                          onClick={() => handleOpenDetail(item, sIdx + 1)}
+                          className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 hover:border-rose-400 shrink-0 relative opacity-85 hover:opacity-100 transition-all cursor-pointer"
+                          title={`Xem ảnh phụ #${sIdx + 1}`}
+                        >
+                          <img src={subUrl} alt={`Ảnh phụ ${sIdx + 1}`} className="w-full h-full object-cover" />
+                          {sIdx === 3 && subImages.length > 4 && (
+                            <div className="absolute inset-0 bg-black/65 flex items-center justify-center text-[10px] font-bold text-white">
+                              +{subImages.length - 4}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Content details */}
+                  <div className="p-5 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3
+                        onClick={() => handleOpenDetail(item, 0)}
+                        className="text-base font-bold text-slate-800 line-clamp-1 hover:text-rose-600 cursor-pointer transition-colors mb-2"
+                        title={item.title}
+                      >
+                        {item.title}
+                      </h3>
+
+                      {item.description && (
+                        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">
+                          {item.description}
+                        </p>
+                      )}
+
+                      {/* Tags */}
+                      {item.tags && (
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {item.tags.split(',').slice(0, 3).map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-100"
+                            >
+                              #{tag.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Artist Info & Action Footer */}
+                    <div className="pt-3 border-t border-slate-100 space-y-3 mt-auto">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-rose-500 text-white font-bold flex items-center justify-center text-xs overflow-hidden shrink-0 shadow-sm">
+                            {item.artistAvatar ? (
+                              <img src={item.artistAvatar} alt={item.artistName} className="w-full h-full object-cover" />
+                            ) : (
+                              item.artistName?.charAt(0) || 'A'
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-800 truncate">{item.artistName}</p>
+                            <p className="text-[10px] text-slate-400 truncate">
+                              {item.artistExperience || 'Chuyên gia Makeup'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDetail(item, 0)}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-600 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                          title="Xem chi tiết và toàn bộ ảnh của tác phẩm"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-rose-500" />
+                          <span>Chi tiết</span>
+                        </button>
+                      </div>
+
+                      {isFromBooking ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleResumeBookingWithPortfolio(item);
+                          }}
+                          className="w-full py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs group cursor-pointer"
+                          title="Tiếp tục đặt lịch với mẫu này"
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>Tiếp tục đặt lịch với mẫu này</span>
+                          <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        </button>
+                      ) : (
+                        <Link
+                          to={`/booking?artistId=${item.artistId || ''}`}
+                          className="w-full py-2 px-3 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white text-xs font-semibold transition-all shadow-2xs flex items-center justify-center gap-1.5"
+                          title="Đặt lịch với thợ này"
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>Đặt lịch với chuyên viên</span>
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
 
-      {/* 4. Modal Lightbox Xem Chi Tiết Tác Phẩm */}
+      {/* 4. Modal Lightbox Xem Chi Tiết Tác Phẩm (1 Ảnh Chính & Nhiều Ảnh Phụ) */}
       {selectedPortfolio && (
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-200"
@@ -404,26 +629,68 @@ const CollectionsPage = () => {
             className="bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl border border-white/20 flex flex-col lg:flex-row max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Left: Main Image Display */}
+            {/* Left: Main Image Display & Gallery Navigation */}
             <div className="lg:w-7/12 bg-slate-950 flex flex-col justify-between relative overflow-hidden">
-              <div className="relative flex-1 min-h-[300px] lg:min-h-[480px] flex items-center justify-center bg-black">
-                <img
-                  src={modalImages[activeImageIndex] || selectedPortfolio.imageUrl}
-                  alt={selectedPortfolio.title}
-                  className="max-h-[60vh] lg:max-h-[75vh] w-auto max-w-full object-contain mx-auto"
-                />
+              <div className="relative flex-1 min-h-[320px] lg:min-h-[480px] flex items-center justify-center bg-black">
+                {(modalImages[activeImageIndex] || selectedPortfolio.imageUrl) ? (
+                  <img
+                    src={modalImages[activeImageIndex] || selectedPortfolio.imageUrl}
+                    alt={selectedPortfolio.title}
+                    className="max-h-[60vh] lg:max-h-[75vh] w-auto max-w-full object-contain mx-auto"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-slate-500 py-20">
+                    <Sparkles className="w-12 h-12 text-rose-500/40 mb-2" />
+                    <span className="text-xs font-medium text-slate-400">Chưa có ảnh tác phẩm</span>
+                  </div>
+                )}
 
-                {/* Badges on image */}
-                <div className="absolute top-4 left-4 flex gap-2">
-                  <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-xs font-semibold">
-                    {selectedPortfolio.categoryName || 'Tác phẩm'}
+                {/* Badges on image: Ảnh Chính / Ảnh Phụ + Số thứ tự */}
+                <div className="absolute top-4 left-4 flex flex-wrap items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold shadow ${
+                    activeImageIndex === 0
+                      ? 'bg-amber-400 text-slate-950'
+                      : 'bg-black/70 backdrop-blur-md text-white border border-white/20'
+                  }`}>
+                    {activeImageIndex === 0 ? '★ Ảnh Chính' : `Ảnh Phụ #${activeImageIndex}`}
                   </span>
+                  {modalImages.length > 1 && (
+                    <span className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-xs font-semibold">
+                      {activeImageIndex + 1} / {modalImages.length}
+                    </span>
+                  )}
                 </div>
 
                 <div className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-rose-300 text-xs font-medium">
                   <Eye className="w-3.5 h-3.5" />
                   <span>{selectedPortfolio.viewCount || 1} lượt xem</span>
                 </div>
+
+                {/* Nút chuyển ảnh Trái / Phải khi có nhiều ảnh */}
+                {modalImages.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveImageIndex((prev) => (prev - 1 + modalImages.length) % modalImages.length)
+                      }
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-rose-600 text-white flex items-center justify-center transition-colors shadow-lg cursor-pointer"
+                      title="Ảnh trước"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveImageIndex((prev) => (prev + 1) % modalImages.length)
+                      }
+                      className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-rose-600 text-white flex items-center justify-center transition-colors shadow-lg cursor-pointer"
+                      title="Ảnh tiếp theo"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Thumbnails row if multiple images exist */}
@@ -432,12 +699,19 @@ const CollectionsPage = () => {
                   {modalImages.map((img, idx) => (
                     <button
                       key={idx}
+                      type="button"
                       onClick={() => setActiveImageIndex(idx)}
-                      className={`w-14 h-14 rounded-lg overflow-hidden shrink-0 border-2 transition-all ${
-                        activeImageIndex === idx ? 'border-rose-500 scale-105' : 'border-transparent opacity-60 hover:opacity-100'
+                      className={`relative w-14 h-14 rounded-xl overflow-hidden shrink-0 border-2 transition-all cursor-pointer ${
+                        activeImageIndex === idx ? 'border-rose-500 scale-105 opacity-100' : 'border-transparent opacity-60 hover:opacity-100'
                       }`}
+                      title={idx === 0 ? 'Ảnh chính' : `Ảnh phụ #${idx}`}
                     >
                       <img src={img} alt="" className="w-full h-full object-cover" />
+                      {idx === 0 && (
+                        <span className="absolute bottom-0 inset-x-0 bg-amber-400 text-slate-950 text-[8px] font-extrabold text-center">
+                          CHÍNH
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -505,35 +779,50 @@ const CollectionsPage = () => {
                     </div>
                   </div>
 
-                  {selectedPortfolio.artistSpecialties && (
-                    <p className="text-xs text-slate-500 leading-normal border-t border-slate-200/60 pt-2 mt-2">
-                      <strong className="text-slate-700">Sở trường:</strong> {selectedPortfolio.artistSpecialties}
-                    </p>
-                  )}
+                  <p className="text-xs text-slate-500 leading-normal border-t border-slate-200/60 pt-2 mt-2">
+                    <strong className="text-slate-700">Phong cách:</strong> Thành thạo toàn diện mọi layout trang điểm
+                  </p>
                 </div>
               </div>
 
               {/* Action Buttons */}
               <div className="space-y-2.5 pt-4 border-t border-slate-100">
-                <Link
-                  to="/booking"
-                  onClick={handleCloseDetail}
-                  className="w-full inline-flex items-center justify-center gap-2 py-3 px-5 rounded-2xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white font-bold text-sm shadow-lg shadow-rose-500/25 transition-all"
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleCloseDetail();
+                    handleResumeBookingWithPortfolio(selectedPortfolio);
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 py-3 px-5 rounded-2xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white font-bold text-sm shadow-lg shadow-rose-500/25 transition-all cursor-pointer"
                 >
                   <Calendar className="w-4 h-4" />
-                  <span>Đặt Lịch Với Phong Cách Này Ngay</span>
+                  <span>{isFromBooking ? 'Tiếp Tục Đặt Lịch Với Mẫu Này' : 'Đặt Lịch Với Phong Cách Này Ngay'}</span>
                   <ArrowRight className="w-4 h-4" />
-                </Link>
+                </button>
 
                 <button
                   onClick={handleCloseDetail}
-                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-colors"
+                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   Đóng & Tiếp tục duyệt bộ sưu tập
                 </button>
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 5. Nút Floating nổi bật ở góc phải màn hình để tiếp tục đặt lịch */}
+      {isFromBooking && (
+        <div className="fixed bottom-6 right-6 z-40 animate-in fade-in slide-in-from-bottom-4">
+          <button
+            onClick={handleResumeBooking}
+            className="flex items-center gap-2.5 px-5 py-3 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 text-white font-bold text-xs sm:text-sm shadow-2xl shadow-rose-600/50 hover:from-rose-700 hover:to-pink-700 transition-all border-2 border-white transform hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Tiếp Tục Đặt Lịch</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>

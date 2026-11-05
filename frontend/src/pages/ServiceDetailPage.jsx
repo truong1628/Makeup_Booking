@@ -1,24 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   Sparkles, Clock, Calendar, Check, Layers, AlertCircle,
-  Star, ShieldCheck, Heart, ArrowLeft, ArrowRight, Share2,
+  Star, ShieldCheck, ArrowLeft, ArrowRight, Share2,
   CheckCircle2, ThumbsUp, MessageSquare, PhoneCall, Award,
-  Info, ChevronRight, LogIn, Lock
+  ChevronRight, LogIn
 } from 'lucide-react';
 import { serviceService } from '../services/serviceService';
 import { bookingService } from '../services/bookingService';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, decodeHtmlEntities } from '../utils/format';
 
-const SAMPLE_GALLERIES = [
-  'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1000&q=80',
-  'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=1000&q=80',
-  'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=1000&q=80',
-  'https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?auto=format&fit=crop&w=1000&q=80',
-  'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?auto=format&fit=crop&w=1000&q=80'
-];
+
 
 const DEFAULT_REVIEWS = [
   {
@@ -61,7 +55,6 @@ const DEFAULT_REVIEWS = [
 
 const ServiceDetailPage = () => {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const toast = useToast();
 
@@ -98,13 +91,12 @@ const ServiceDetailPage = () => {
 
         setService(servData);
 
-        // Setup gallery images
-        const baseImg = servData.image || SAMPLE_GALLERIES[0];
-        const combinedGallery = [
-          baseImg,
-          ...SAMPLE_GALLERIES.filter(img => img !== baseImg).slice(0, 4)
-        ];
-        setGalleryImages(combinedGallery);
+        // Setup gallery images (lấy từ dữ liệu dịch vụ)
+        const baseImg = servData.image || '';
+        const gallery = servData.images && Array.isArray(servData.images) && servData.images.length > 0
+          ? servData.images
+          : (baseImg ? [baseImg] : []);
+        setGalleryImages(gallery);
         setSelectedImage(baseImg);
 
         // Setup related services (exclude current)
@@ -133,24 +125,26 @@ const ServiceDetailPage = () => {
             setCheckingEligibility(true);
             const myBookings = await bookingService.getMyBookings();
             
-            // Check completed booking
-            const completed = myBookings.find(b => 
-              b.status === 'COMPLETED' && 
-              b.items?.some(item => 
-                String(item.makeupServiceId) === String(id) || 
-                (item.serviceName && servData.serviceName && item.serviceName.toLowerCase().trim() === servData.serviceName.toLowerCase().trim())
-              )
-            );
+            // Check completed booking (loại trừ hoàn toàn đơn đã hủy)
+            const completed = myBookings.find(b => {
+              const isCancelled = b.status === 'CANCELLED' || Boolean(b.notes && (b.notes.includes('[Lý do hủy') || b.notes.includes('[HOÀN CỌC') || b.notes.includes('[ĐÃ HOÀN CỌC') || b.notes.includes('[Tự động hủy')));
+              return !isCancelled && b.status === 'COMPLETED' && 
+                b.items?.some(item => 
+                  String(item.makeupServiceId) === String(id) || 
+                  (item.serviceName && servData.serviceName && item.serviceName.toLowerCase().trim() === servData.serviceName.toLowerCase().trim())
+                );
+            });
             setCompletedBooking(completed || null);
 
             // Check non-completed active booking
-            const pending = myBookings.find(b => 
-              b.status !== 'COMPLETED' && b.status !== 'CANCELLED' &&
-              b.items?.some(item => 
-                String(item.makeupServiceId) === String(id) || 
-                (item.serviceName && servData.serviceName && item.serviceName.toLowerCase().trim() === servData.serviceName.toLowerCase().trim())
-              )
-            );
+            const pending = myBookings.find(b => {
+              const isCancelled = b.status === 'CANCELLED' || Boolean(b.notes && (b.notes.includes('[Lý do hủy') || b.notes.includes('[HOÀN CỌC') || b.notes.includes('[ĐÃ HOÀN CỌC') || b.notes.includes('[Tự động hủy')));
+              return !isCancelled && b.status !== 'COMPLETED' && 
+                b.items?.some(item => 
+                  String(item.makeupServiceId) === String(id) || 
+                  (item.serviceName && servData.serviceName && item.serviceName.toLowerCase().trim() === servData.serviceName.toLowerCase().trim())
+                );
+            });
             setPendingBooking(pending || null);
           } catch (err) {
             console.warn('Không thể kiểm tra lịch sử đơn đặt:', err);
@@ -160,7 +154,8 @@ const ServiceDetailPage = () => {
         }
       } catch (err) {
         console.error('Lỗi khi tải chi tiết dịch vụ:', err);
-        setError('Không thể tìm thấy thông tin dịch vụ hoặc dịch vụ không tồn tại.');
+        const serverMsg = err.response?.data?.message;
+        setError(serverMsg || 'Không thể tìm thấy thông tin dịch vụ hoặc dịch vụ không tồn tại.');
       } finally {
         setLoading(false);
       }
@@ -264,7 +259,7 @@ const ServiceDetailPage = () => {
     ? service.comboItems.map(ci => ({ name: ci.itemServiceName, quantity: ci.quantity || 1 }))
     : (service.description && service.description.includes('\n'))
     ? service.description.split('\n')
-        .map(l => l.replace(/^[•\-\*\+]\s*/, '').trim())
+        .map(l => l.replace(/^[•\-*+]\s*/, '').trim())
         .filter(l => l.length > 0)
         .map(l => {
           const m = l.match(/^(\d+)x?\s*(.+)$/i);
@@ -292,12 +287,20 @@ const ServiceDetailPage = () => {
           {/* Left Column: Sample Images Gallery */}
           <div className="lg:col-span-6 space-y-4">
             {/* Primary Main Image Preview */}
-            <div className="relative aspect-[4/5] rounded-3xl overflow-hidden bg-slate-100 shadow-xl border-4 border-white group">
-              <img
-                src={selectedImage}
-                alt={service.serviceName}
-                className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105"
-              />
+            <div className="relative aspect-[4/5] rounded-3xl overflow-hidden bg-slate-900 shadow-xl border-4 border-white group flex items-center justify-center">
+              {selectedImage ? (
+                <img
+                  src={selectedImage}
+                  alt={service.serviceName}
+                  className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-6 text-center bg-gradient-to-tr from-slate-950 via-rose-950/60 to-slate-900">
+                  <Sparkles className="w-12 h-12 text-rose-400 mb-3 animate-pulse" />
+                  <p className="text-white font-bold text-base mb-1">{service.serviceName}</p>
+                  <span className="text-xs text-rose-200/70">Studio DungDorys</span>
+                </div>
+              )}
               
               {/* Badges */}
               <div className="absolute top-4 left-4 flex flex-col gap-2">
@@ -311,10 +314,12 @@ const ServiceDetailPage = () => {
                     Dịch Vụ Nghệ Thuật
                   </span>
                 )}
-                <span className="px-3 py-1 rounded-full bg-slate-900/80 backdrop-blur-md text-amber-300 text-[11px] font-semibold flex items-center gap-1 shadow-md w-fit">
-                  <Star className="w-3 h-3 fill-amber-300" />
-                  <span>Ảnh thực tế Studio</span>
-                </span>
+                {selectedImage && (
+                  <span className="px-3 py-1 rounded-full bg-slate-900/80 backdrop-blur-md text-amber-300 text-[11px] font-semibold flex items-center gap-1 shadow-md w-fit">
+                    <Star className="w-3 h-3 fill-amber-300" />
+                    <span>Ảnh thực tế Studio</span>
+                  </span>
+                )}
               </div>
 
               {/* Share & Favorite quick buttons */}
@@ -329,29 +334,31 @@ const ServiceDetailPage = () => {
               </div>
             </div>
 
-            {/* Thumbnail Row */}
-            <div className="grid grid-cols-5 gap-3">
-              {galleryImages.map((img, idx) => {
-                const isSelected = selectedImage === img;
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedImage(img)}
-                    className={`relative aspect-[4/5] rounded-2xl overflow-hidden transition-all border-2 ${
-                      isSelected
-                        ? 'border-rose-600 ring-2 ring-rose-500/20 scale-105 shadow-md'
-                        : 'border-transparent opacity-70 hover:opacity-100 hover:scale-102'
-                    }`}
-                  >
-                    <img
-                      src={img}
-                      alt={`Thumbnail ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  </button>
-                );
-              })}
-            </div>
+            {/* Thumbnail Row (Chỉ hiển thị khi có từ 2 ảnh trở lên) */}
+            {galleryImages.length > 1 && (
+              <div className="grid grid-cols-5 gap-3">
+                {galleryImages.map((img, idx) => {
+                  const isSelected = selectedImage === img;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedImage(img)}
+                      className={`relative aspect-[4/5] rounded-2xl overflow-hidden transition-all border-2 ${
+                        isSelected
+                          ? 'border-rose-600 ring-2 ring-rose-500/20 scale-105 shadow-md'
+                          : 'border-transparent opacity-70 hover:opacity-100 hover:scale-102'
+                      }`}
+                    >
+                      <img
+                        src={img}
+                        alt={`Thumbnail ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <p className="text-[11px] text-slate-400 text-center italic">
               * Bấm vào các ảnh nhỏ để xem chi tiết từng góc chụp và layout makeup mẫu.
             </p>
@@ -392,7 +399,7 @@ const ServiceDetailPage = () => {
               <div>
                 <span className="text-xs text-slate-500 font-medium block">Chi phí trọn gói dịch vụ</span>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-serif text-3xl sm:text-4xl font-bold text-rose-600">
+                  <span className="font-sans text-3xl sm:text-4xl font-bold text-rose-600">
                     {formatCurrency(service.price)}
                   </span>
                   <span className="text-xs text-slate-400">/ buổi</span>
@@ -584,8 +591,8 @@ const ServiceDetailPage = () => {
                   </div>
                 </div>
 
-                <p className="text-sm text-slate-600 leading-relaxed">
-                  "{rev.comment}"
+                <p className="text-sm text-slate-600 leading-relaxed break-words whitespace-pre-wrap">
+                  "{decodeHtmlEntities(rev.comment)}"
                 </p>
 
                 <div className="pt-2 flex items-center justify-between text-xs text-slate-400 border-t border-slate-50">
@@ -645,7 +652,7 @@ const ServiceDetailPage = () => {
                     </p>
                   </div>
 
-                  <form onSubmit={handleAddReview} className="space-y-4">
+                  <form onSubmit={handleAddReview} noValidate className="space-y-4">
                     {/* Select Stars */}
                     <div>
                       <label className="text-xs font-semibold text-slate-700 block mb-1.5">
@@ -771,12 +778,19 @@ const ServiceDetailPage = () => {
                 className="rounded-3xl bg-white border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between overflow-hidden group"
               >
                 <div>
-                  <div className="relative aspect-[4/5] bg-slate-100 overflow-hidden">
-                    <img
-                      src={rel.image || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80'}
-                      alt={rel.serviceName}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                  <div className="relative aspect-[4/5] bg-slate-900 overflow-hidden">
+                    {rel.image ? (
+                      <img
+                        src={rel.image}
+                        alt={rel.serviceName}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4 text-center bg-gradient-to-br from-slate-900 to-slate-950">
+                        <Sparkles className="w-8 h-8 text-rose-400/70 mb-1" />
+                        <span className="text-[11px] text-slate-300">Studio DungDorys</span>
+                      </div>
+                    )}
                     <div className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white text-[10px] font-semibold">
                       {rel.duration} phút
                     </div>
@@ -793,7 +807,7 @@ const ServiceDetailPage = () => {
                 </div>
 
                 <div className="p-4 pt-0 border-t border-slate-50 flex items-center justify-between mt-2">
-                  <span className="text-sm font-bold text-rose-600 font-serif">
+                  <span className="text-sm font-bold text-rose-600 font-sans">
                     {formatCurrency(rel.price)}
                   </span>
                   <Link

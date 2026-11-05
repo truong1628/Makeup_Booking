@@ -21,4 +21,9 @@ public class BookingItemResponse {
     private LocalTime startTime;
     private LocalTime endTime;
     private BigDecimal price;
+    private Boolean cancelRequested;
+    private String cancelReason;
+    private String cancelStatus;
+    private java.time.LocalDateTime cancelRequestedAt;
+    private Long originalArtistId;
 }

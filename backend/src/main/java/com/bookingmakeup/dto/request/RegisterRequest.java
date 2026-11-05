@@ -35,7 +35,6 @@ public class RegisterRequest {
 
     // Các trường tùy chọn khi đăng ký Artist
     private String experience;
-    private String specialties;
     private String workingHours;
     private String workingDays;
 }

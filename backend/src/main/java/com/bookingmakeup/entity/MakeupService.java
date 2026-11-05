@@ -21,6 +21,10 @@ public class MakeupService extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private ServiceCategory category;
+
     @Column(name = "service_name", nullable = false, length = 150)
     private String serviceName;
 

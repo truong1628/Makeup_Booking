@@ -21,6 +21,9 @@ public class MakeupServiceResponse {
     private String description;
     private String image;
     private Boolean isCombo;
+    private Long categoryId;
+    private String categoryName;
+    private String categoryCode;
     private Boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

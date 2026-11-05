@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { authStorage } from '../utils/authStorage';
-import { ShieldAlert, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 /**
  * ProtectedRoute Component:
@@ -11,7 +11,7 @@ import { ShieldAlert, Loader2 } from 'lucide-react';
  * @param {string} requiredRole - Quyền yêu cầu (VD: 'ROLE_ADMIN', 'ROLE_ARTIST')
  */
 const ProtectedRoute = ({ requiredRole }) => {
-  const { loading, isAuthenticated, user } = useAuth();
+  const { loading, isAuthenticated } = useAuth();
   const location = useLocation();
   const toast = useToast();
   const hasNotifiedRef = useRef(false);
@@ -24,6 +24,26 @@ const ProtectedRoute = ({ requiredRole }) => {
   useEffect(() => {
     hasNotifiedRef.current = false;
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (!isAuthenticated || !tokenValid) {
+      if (!hasNotifiedRef.current) {
+        hasNotifiedRef.current = true;
+        toast.warning('⚠️ Phiên đăng nhập đã hết hạn hoặc bạn chưa đăng nhập. Vui lòng đăng nhập để tiếp tục.');
+      }
+      return;
+    }
+
+    if (requiredRole && jwtRole !== requiredRole) {
+      if (!hasNotifiedRef.current) {
+        hasNotifiedRef.current = true;
+        const roleName = requiredRole === 'ROLE_ADMIN' ? 'Quản Trị Viên (Admin)' : 'Chuyên Viên Trang Điểm';
+        toast.error(`⛔ Quyền truy cập bị từ chối: Tài khoản của bạn không có quyền ${roleName}.`);
+      }
+    }
+  }, [loading, isAuthenticated, tokenValid, requiredRole, jwtRole, toast]);
 
   // Đang nạp dữ liệu Auth
   if (loading) {
@@ -39,21 +59,11 @@ const ProtectedRoute = ({ requiredRole }) => {
 
   // Trường hợp 1: Chưa đăng nhập hoặc token đã hết hạn
   if (!isAuthenticated || !tokenValid) {
-    if (!hasNotifiedRef.current) {
-      hasNotifiedRef.current = true;
-      toast.warning('⚠️ Phiên đăng nhập đã hết hạn hoặc bạn chưa đăng nhập. Vui lòng đăng nhập để tiếp tục.');
-    }
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   // Trường hợp 2: Đã đăng nhập nhưng không đủ quyền (ví dụ Customer truy cập trang Admin)
   if (requiredRole && jwtRole !== requiredRole) {
-    if (!hasNotifiedRef.current) {
-      hasNotifiedRef.current = true;
-      const roleName = requiredRole === 'ROLE_ADMIN' ? 'Quản Trị Viên (Admin)' : 'Chuyên Viên Trang Điểm';
-      toast.error(`⛔ Quyền truy cập bị từ chối: Tài khoản của bạn không có quyền ${roleName}.`);
-    }
-
     // Tự động chặn và chuyển hướng về trang chủ
     return <Navigate to="/" replace />;
   }

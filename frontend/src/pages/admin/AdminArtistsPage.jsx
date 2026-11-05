@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Palette, Plus, Mail, Phone, Clock, Calendar, CheckCircle2,
-  AlertCircle, User, ShieldCheck, Edit3, Trash2, X, Check, Loader2
+  Palette, Plus, Mail, Phone,
+  AlertCircle, Edit3, Trash2, X, Check, Loader2,
+  DollarSign
 } from 'lucide-react';
 import axiosInstance from '../../services/axiosInstance';
+import { bookingService } from '../../services/bookingService';
 import { useToast } from '../../context/ToastContext';
+import ArtistRevenueStats from '../../components/admin/ArtistRevenueStats';
 
 const AdminArtistsPage = () => {
   const toast = useToast();
   const [artists, setArtists] = useState([]);
+  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('PROFILES'); // 'PROFILES' | 'REVENUE'
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -21,7 +26,6 @@ const AdminArtistsPage = () => {
     phone: '',
     password: 'Password123@',
     experience: '3 năm kinh nghiệm',
-    specialties: 'Trang điểm cô dâu, dạ tiệc, kỷ yếu',
     workingHours: '08:00 - 20:00',
     workingDays: 'Thứ 2 - Chủ Nhật',
   });
@@ -33,7 +37,6 @@ const AdminArtistsPage = () => {
     phone: '',
     password: '',
     experience: '',
-    specialties: '',
     workingHours: '',
     workingDays: '',
     active: true,
@@ -48,19 +51,25 @@ const AdminArtistsPage = () => {
   // State toggle nhanh trạng thái
   const [togglingId, setTogglingId] = useState(null);
 
-  const loadArtists = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const res = await axiosInstance.get('/api/v1/admin/artists');
-      const list = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+      const [artistsRes, bookingsRes] = await Promise.all([
+        axiosInstance.get('/api/v1/admin/artists'),
+        bookingService.getAllBookings().catch(() => []),
+      ]);
+      const list = Array.isArray(artistsRes) ? artistsRes : Array.isArray(artistsRes?.data) ? artistsRes.data : [];
       setArtists(list);
+      setBookings(Array.isArray(bookingsRes) ? bookingsRes : []);
     } catch (err) {
-      console.error('Lỗi khi tải danh sách thợ:', err);
+      console.error('Lỗi khi tải dữ liệu thợ:', err);
       toast.error('Không thể tải danh sách thợ: ' + (err.message || ''));
     } finally {
       setLoading(false);
     }
   };
+
+  const loadArtists = loadData;
 
   const handleToggleStatus = async (artist) => {
     try {
@@ -109,7 +118,6 @@ const AdminArtistsPage = () => {
         password: formData.password,
         role: 'ROLE_ARTIST',
         experience: formData.experience,
-        specialties: formData.specialties,
         workingHours: formData.workingHours,
         workingDays: formData.workingDays,
       });
@@ -122,7 +130,6 @@ const AdminArtistsPage = () => {
         phone: '',
         password: 'Password123@',
         experience: '3 năm kinh nghiệm',
-        specialties: 'Trang điểm cô dâu, dạ tiệc, kỷ yếu',
         workingHours: '08:00 - 20:00',
         workingDays: 'Thứ 2 - Chủ Nhật',
       });
@@ -145,7 +152,6 @@ const AdminArtistsPage = () => {
       phone: artist.phone || '',
       password: '',
       experience: artist.experience || '',
-      specialties: artist.specialties || '',
       workingHours: artist.workingHours || '08:00 - 20:00',
       workingDays: artist.workingDays || 'Thứ 2 - Chủ Nhật',
       active: artist.active !== false,
@@ -179,8 +185,11 @@ const AdminArtistsPage = () => {
     setSubmittingEdit(true);
 
     try {
-      const res = await axiosInstance.put(`/api/v1/admin/artists/${editingArtist.id}`, editFormData);
-      const updated = res.data || editFormData;
+      const payload = {
+        ...editFormData,
+      };
+      const res = await axiosInstance.put(`/api/v1/admin/artists/${editingArtist.id}`, payload);
+      const updated = res.data || payload;
 
       setArtists(prev => prev.map(a => a.id === editingArtist.id ? { ...a, ...updated } : a));
       toast.success(`✅ Đã cập nhật chuyên viên '${editFormData.fullName}' thành công!`);
@@ -224,16 +233,54 @@ const AdminArtistsPage = () => {
           </p>
         </div>
 
+        {activeTab === 'PROFILES' && (
+          <button
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 text-white text-xs font-semibold shadow-md cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tạo Tài Khoản Thợ Mới</span>
+          </button>
+        )}
+      </div>
+
+      {/* Tab Switcher: Quản lý hồ sơ vs Thống kê doanh thu */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-900/80 border border-slate-800 w-fit">
         <button
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 text-white text-xs font-semibold shadow-md cursor-pointer"
+          type="button"
+          onClick={() => setActiveTab('PROFILES')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'PROFILES'
+              ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
         >
-          <Plus className="w-4 h-4" />
-          <span>Tạo Tài Khoản Thợ Mới</span>
+          <Palette className="w-4 h-4" />
+          <span>Danh Sách Chuyên Viên ({artists.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('REVENUE')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'REVENUE'
+              ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <DollarSign className="w-4 h-4" />
+          <span>Bảng Thống Kê Doanh Thu Từng Chuyên Viên</span>
         </button>
       </div>
 
-      {loading ? (
+      {activeTab === 'REVENUE' ? (
+        <ArtistRevenueStats
+          artists={artists}
+          bookings={bookings}
+          loading={loading}
+          onRefresh={loadData}
+        />
+      ) : loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2].map((n) => (
             <div key={n} className="h-44 rounded-3xl bg-slate-900/60 animate-pulse" />
@@ -301,9 +348,11 @@ const AdminArtistsPage = () => {
                     <span className="text-slate-500">Kinh nghiệm:</span>
                     <span className="font-medium text-amber-400">{artist.experience || 'Chưa cập nhật'}</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
-                    <span className="text-slate-500">Sở trường:</span>
-                    <span className="font-medium text-slate-200 text-right max-w-[240px] truncate">{artist.specialties || 'Đa dạng phong cách'}</span>
+                  <div className="flex justify-between items-center text-slate-300">
+                    <span className="text-slate-500 shrink-0">Năng lực:</span>
+                    <span className="font-semibold text-emerald-400 text-right">
+                      Toàn diện mọi phong cách
+                    </span>
                   </div>
                   <div className="flex justify-between text-slate-300">
                     <span className="text-slate-500">Khung giờ làm:</span>
@@ -368,7 +417,7 @@ const AdminArtistsPage = () => {
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="space-y-3.5 text-xs">
+            <form onSubmit={handleCreate} noValidate className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-slate-300 mb-1 font-semibold">Họ và tên Thợ *</label>
                 <input
@@ -446,18 +495,6 @@ const AdminArtistsPage = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-300 mb-1 font-semibold">Sở Trường / Phong Cách Nổi Bật</label>
-                <input
-                  type="text"
-                  name="specialties"
-                  value={formData.specialties}
-                  onChange={handleChange}
-                  placeholder="Ví dụ: Cô dâu tone Thái, kỷ yếu Hàn Quốc trong veo"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
-                />
-              </div>
-
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
                 <button
                   type="button"
@@ -519,7 +556,7 @@ const AdminArtistsPage = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmitEdit} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSubmitEdit} noValidate className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 mb-1 font-semibold">Họ và tên *</label>
@@ -591,18 +628,6 @@ const AdminArtistsPage = () => {
                   onChange={handleEditChange}
                   placeholder="Thứ 2 - Chủ Nhật"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1 font-semibold">Sở Trường / Phong Cách Nổi Bật</label>
-                <textarea
-                  rows={2}
-                  name="specialties"
-                  value={editFormData.specialties}
-                  onChange={handleEditChange}
-                  placeholder="Ví dụ: Trang điểm cô dâu tone Thái, tiệc tối Glamour, dạ tiệc..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-rose-500 resize-none"
                 />
               </div>
 

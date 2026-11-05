@@ -7,8 +7,10 @@ import com.bookingmakeup.dto.request.ServiceCreateRequest;
 import com.bookingmakeup.dto.response.ComboItemResponse;
 import com.bookingmakeup.dto.response.MakeupServiceResponse;
 import com.bookingmakeup.entity.MakeupService;
+import com.bookingmakeup.entity.ServiceCategory;
 import com.bookingmakeup.entity.ServiceComboItem;
 import com.bookingmakeup.repository.MakeupServiceRepository;
+import com.bookingmakeup.repository.ServiceCategoryRepository;
 import com.bookingmakeup.repository.ServiceComboItemRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -27,6 +30,30 @@ public class MakeupServiceService {
 
     private final MakeupServiceRepository makeupServiceRepository;
     private final ServiceComboItemRepository serviceComboItemRepository;
+    private final ServiceCategoryRepository serviceCategoryRepository;
+
+    /**
+     * Bộ sắp xếp chuẩn cho dịch vụ:
+     * 1. Gói Combo (isCombo = true) hiển thị trước dịch vụ đơn lẻ (isCombo = false)
+     * 2. Trong cùng nhóm (Combo hoặc Đơn lẻ), sắp xếp theo giá từ thấp đến cao (giá thấp hiện trước)
+     * 3. Nếu bằng giá, sắp xếp theo ID tăng dần
+     */
+    private static final Comparator<MakeupService> COMBO_FIRST_PRICE_ASC_COMPARATOR = (a, b) -> {
+        boolean comboA = Boolean.TRUE.equals(a.getIsCombo());
+        boolean comboB = Boolean.TRUE.equals(b.getIsCombo());
+        if (comboA != comboB) {
+            return comboA ? -1 : 1;
+        }
+        BigDecimal priceA = a.getPrice() != null ? a.getPrice() : BigDecimal.ZERO;
+        BigDecimal priceB = b.getPrice() != null ? b.getPrice() : BigDecimal.ZERO;
+        int priceCmp = priceA.compareTo(priceB);
+        if (priceCmp != 0) {
+            return priceCmp;
+        }
+        Long idA = a.getId() != null ? a.getId() : 0L;
+        Long idB = b.getId() != null ? b.getId() : 0L;
+        return idA.compareTo(idB);
+    };
 
     @Transactional(readOnly = true)
     public List<MakeupServiceResponse> getActiveServices(Boolean isCombo) {
@@ -40,6 +67,7 @@ public class MakeupServiceService {
         }
 
         return services.stream()
+                .sorted(COMBO_FIRST_PRICE_ASC_COMPARATOR)
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
@@ -48,6 +76,7 @@ public class MakeupServiceService {
     public List<MakeupServiceResponse> getActiveCombos() {
         List<MakeupService> combos = makeupServiceRepository.findByActiveTrueAndIsComboTrue();
         return combos.stream()
+                .sorted(COMBO_FIRST_PRICE_ASC_COMPARATOR)
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
@@ -71,6 +100,13 @@ public class MakeupServiceService {
 
         int calculatedDuration = request.getDuration() != null ? request.getDuration() : 60;
 
+        ServiceCategory category = null;
+        if (request.getCategoryId() != null) {
+            category = serviceCategoryRepository.findById(request.getCategoryId()).orElse(null);
+        } else if (isCombo) {
+            category = serviceCategoryRepository.findByCode("COMBO").orElse(null);
+        }
+
         MakeupService service = MakeupService.builder()
                 .serviceName(request.getServiceName().trim())
                 .price(request.getPrice())
@@ -78,6 +114,7 @@ public class MakeupServiceService {
                 .description(request.getDescription())
                 .image(request.getImage())
                 .isCombo(isCombo)
+                .category(category)
                 .active(true)
                 .build();
 
@@ -140,6 +177,7 @@ public class MakeupServiceService {
     @Transactional(readOnly = true)
     public List<MakeupServiceResponse> getAllServicesForAdmin() {
         return makeupServiceRepository.findAll().stream()
+                .sorted(COMBO_FIRST_PRICE_ASC_COMPARATOR)
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
@@ -171,6 +209,10 @@ public class MakeupServiceService {
         }
         if (request.getActive() != null) {
             service.setActive(request.getActive());
+        }
+        if (request.getCategoryId() != null) {
+            ServiceCategory cat = serviceCategoryRepository.findById(request.getCategoryId()).orElse(null);
+            service.setCategory(cat);
         }
 
         // Nếu là combo và có cập nhật danh sách món con
@@ -241,6 +283,9 @@ public class MakeupServiceService {
                 .description(service.getDescription())
                 .image(service.getImage())
                 .isCombo(service.getIsCombo())
+                .categoryId(service.getCategory() != null ? service.getCategory().getId() : null)
+                .categoryName(service.getCategory() != null ? service.getCategory().getName() : null)
+                .categoryCode(service.getCategory() != null ? service.getCategory().getCode() : null)
                 .active(service.getActive())
                 .createdAt(service.getCreatedAt())
                 .updatedAt(service.getUpdatedAt())

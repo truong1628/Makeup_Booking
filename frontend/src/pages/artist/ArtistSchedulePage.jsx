@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Calendar, Clock, AlertTriangle, PlusCircle, CheckCircle2,
-  ShieldAlert, RefreshCw, Sparkles, Sun, Moon, Info
+  Calendar, Clock, PlusCircle, CheckCircle2,
+  ShieldAlert, RefreshCw, Sun, Info
 } from 'lucide-react';
 import { artistService } from '../../services/artistService';
 import { useToast } from '../../context/ToastContext';
@@ -101,7 +101,7 @@ const ArtistSchedulePage = () => {
               </div>
             </div>
 
-            <form onSubmit={handleRegisterDayOff} className="space-y-4">
+            <form onSubmit={handleRegisterDayOff} noValidate className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Chọn Ngày Nghỉ Phép

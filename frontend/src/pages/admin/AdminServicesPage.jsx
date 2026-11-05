@@ -1,21 +1,33 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   Sparkles, Plus, Clock, AlertCircle, CheckCircle2, Layers,
-  Search, Edit3, Eye, EyeOff, Check, X, Image as ImageIcon,
-  Tag, Percent, ArrowUpDown, ChevronRight, SlidersHorizontal, RefreshCw, Upload, Loader2, Trash2
+  Search, Edit3, EyeOff, X, Image as ImageIcon,
+  Tag, RefreshCw, Upload, Loader2, Trash2
 } from 'lucide-react';
 import { serviceService } from '../../services/serviceService';
+import { categoryService } from '../../services/categoryService';
 import { uploadService } from '../../services/uploadService';
 import { formatCurrency } from '../../utils/format';
 import { useToast } from '../../context/ToastContext';
 
-// Ảnh mẫu chất lượng cao trên Cloudinary để Admin chọn nhanh khi tạo/sửa dịch vụ
+// Danh sách ảnh minh họa mặc định cho dịch vụ
 const PRESET_IMAGES = [
-  { label: 'Cô Dâu Cao Cấp', url: 'https://res.cloudinary.com/edavcmw2/image/upload/v1790354237/makeup_booking/fgw45ffug6vpjnb74ihj.jpg' },
-  { label: 'Dự Tiệc & Glamour', url: 'https://res.cloudinary.com/edavcmw2/image/upload/v1790354136/makeup_booking/xlyf392cikruot2s74aw.jpg' },
-  { label: 'Kỷ Yếu & Profile', url: 'https://res.cloudinary.com/edavcmw2/image/upload/v1790354140/makeup_booking/jjcjwtqx9hh7blvesqve.jpg' },
-  { label: 'Tự Nhiên Hàng Ngày', url: 'https://res.cloudinary.com/edavcmw2/image/upload/v1790354142/makeup_booking/b22fklbsfd1vz583mxtj.jpg' },
-  { label: 'Combo Makeup & Tóc', url: 'https://res.cloudinary.com/edavcmw2/image/upload/v1790354144/makeup_booking/uvvg2o5hiumvg2n90dk6.jpg' },
+  {
+    label: 'Cô Dâu Sang Trọng',
+    url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    label: 'Dự Tiệc Quyến Rũ',
+    url: 'https://images.unsplash.com/photo-1526045612212-70caf35c14df?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    label: 'Hàn Quốc Tự Nhiên',
+    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    label: 'Làm Tóc & Phụ Kiện',
+    url: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=800&q=80',
+  },
 ];
 
 // Hàm dọn dẹp tên dịch vụ (bỏ phần đóng mở ngoặc Makeup + ...)
@@ -28,6 +40,7 @@ const AdminServicesPage = () => {
   const toast = useToast();
 
   const [services, setServices] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState(null);
 
@@ -54,6 +67,7 @@ const AdminServicesPage = () => {
     description: '',
     image: PRESET_IMAGES[0].url,
     isCombo: false,
+    categoryId: '',
     active: true,
   });
 
@@ -83,12 +97,18 @@ const AdminServicesPage = () => {
     }
   };
 
-  // Tải toàn bộ danh sách dịch vụ (kể cả đang ẩn)
+  // Tải toàn bộ danh sách dịch vụ và danh mục
   const loadData = async () => {
     try {
       setLoading(true);
-      const data = await serviceService.getAllServicesForAdmin();
+      const [data, cats] = await Promise.all([
+        serviceService.getAllServicesForAdmin(),
+        categoryService.getAllCategoriesForAdmin().catch(() => []),
+      ]);
       setServices(data);
+      if (Array.isArray(cats)) {
+        setCategories(cats);
+      }
     } catch (err) {
       toast.error('Lỗi khi tải danh sách dịch vụ: ' + (err.message || ''));
     } finally {
@@ -100,9 +120,11 @@ const AdminServicesPage = () => {
     loadData();
   }, []);
 
-  // Danh sách các dịch vụ đơn lẻ để đưa vào Gói Combo
+  // Danh sách các dịch vụ đơn lẻ để đưa vào Gói Combo (sắp xếp giá từ thấp đến cao)
   const availableSingleServices = useMemo(() => {
-    return services.filter((s) => !s.isCombo);
+    return services
+      .filter((s) => !s.isCombo)
+      .sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
   }, [services]);
 
   // Thống kê nhanh
@@ -114,28 +136,34 @@ const AdminServicesPage = () => {
     return { total, active, inactive, comboCount };
   }, [services]);
 
-  // Lọc và tìm kiếm danh sách
+  // Lọc và sắp xếp danh sách: Gói Combo hiện trước -> Dịch vụ lẻ hiện sau, mỗi nhóm sắp xếp giá từ thấp đến cao
   const filteredServices = useMemo(() => {
-    return services.filter((item) => {
-      // 1. Lọc theo từ khóa tìm kiếm
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchName = item.serviceName.toLowerCase().includes(q);
-        const matchDesc = item.description && item.description.toLowerCase().includes(q);
-        if (!matchName && !matchDesc) return false;
-      }
+    return services
+      .filter((item) => {
+        // 1. Lọc theo từ khóa tìm kiếm
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase().trim();
+          const matchName = item.serviceName.toLowerCase().includes(q);
+          const matchDesc = item.description && item.description.toLowerCase().includes(q);
+          if (!matchName && !matchDesc) return false;
+        }
 
-      // 2. Lọc theo Loại (Đơn / Combo)
-      if (typeFilter === 'SINGLE' && item.isCombo) return false;
-      if (typeFilter === 'COMBO' && !item.isCombo) return false;
+        // 2. Lọc theo Loại (Đơn / Combo)
+        if (typeFilter === 'SINGLE' && item.isCombo) return false;
+        if (typeFilter === 'COMBO' && !item.isCombo) return false;
 
-      // 3. Lọc theo Trạng thái (Hoạt động / Ngừng)
-      const isActive = item.active !== false;
-      if (statusFilter === 'ACTIVE' && !isActive) return false;
-      if (statusFilter === 'INACTIVE' && isActive) return false;
+        // 3. Lọc theo Trạng thái (Hoạt động / Ngừng)
+        const isActive = item.active !== false;
+        if (statusFilter === 'ACTIVE' && !isActive) return false;
+        if (statusFilter === 'INACTIVE' && isActive) return false;
 
-      return true;
-    });
+        return true;
+      })
+      .sort((a, b) => {
+        const comboDiff = Number(Boolean(b.isCombo)) - Number(Boolean(a.isCombo));
+        if (comboDiff !== 0) return comboDiff;
+        return Number(a.price || 0) - Number(b.price || 0);
+      });
   }, [services, searchQuery, typeFilter, statusFilter]);
 
   // Tính toán tổng giá gốc và thời lượng gợi ý cho Combo
@@ -173,6 +201,7 @@ const AdminServicesPage = () => {
       description: '',
       image: PRESET_IMAGES[0].url,
       isCombo: false,
+      categoryId: '',
       active: true,
     });
     setSelectedComboItems({});
@@ -185,11 +214,12 @@ const AdminServicesPage = () => {
     setEditingService(item);
     setFormData({
       serviceName: item.serviceName || '',
-      price: item.price || '',
+      price: item.price != null ? Number(item.price) : '',
       duration: item.duration || 60,
       description: item.description || '',
       image: item.image || PRESET_IMAGES[0].url,
       isCombo: Boolean(item.isCombo),
+      categoryId: item.categoryId || '',
       active: item.active !== false,
     });
 
@@ -285,13 +315,17 @@ const AdminServicesPage = () => {
     e.preventDefault();
     setFormError(null);
 
-    // Validation cơ bản
+    // Validation cơ bản bằng Tiếng Việt
     if (!formData.serviceName.trim()) {
       setFormError('Vui lòng nhập tên dịch vụ');
       return;
     }
-    if (Number(formData.price) <= 0) {
-      setFormError('Giá dịch vụ phải lớn hơn 0');
+    if (formData.price === '' || formData.price === null || Number(formData.price) <= 0) {
+      setFormError('Giá dịch vụ phải lớn hơn 0 VNĐ');
+      return;
+    }
+    if (!formData.duration || Number(formData.duration) < 1) {
+      setFormError('Thời lượng thực hiện phải từ 1 phút trở lên');
       return;
     }
 
@@ -320,6 +354,7 @@ const AdminServicesPage = () => {
         description: formData.description.trim(),
         image: formData.image || PRESET_IMAGES[0].url,
         isCombo: formData.isCombo,
+        categoryId: formData.categoryId ? Number(formData.categoryId) : null,
         active: formData.active,
         comboItems: formData.isCombo ? formattedComboItems : null,
       };
@@ -545,11 +580,18 @@ const AdminServicesPage = () => {
               >
                 {/* Image Container with Title & Price OVERLAID directly on it */}
                 <div className="relative aspect-[4/5] w-full bg-slate-950 overflow-hidden">
-                  <img
-                    src={s.image || PRESET_IMAGES[0].url}
-                    alt={cleanTitle(s.serviceName)}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
+                  {s.image ? (
+                    <img
+                      src={s.image}
+                      alt={cleanTitle(s.serviceName)}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-rose-950/20 to-slate-900 text-slate-500 group-hover:scale-105 transition-transform duration-500">
+                      <Sparkles className="w-10 h-10 text-rose-500/40 mb-2" />
+                      <span className="text-[11px] font-medium text-slate-400">Chưa có ảnh dịch vụ</span>
+                    </div>
+                  )}
 
                   {/* Dark Gradient Overlay for high-contrast legibility */}
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent pointer-events-none" />
@@ -600,6 +642,11 @@ const AdminServicesPage = () => {
                       <span className="text-[10px] font-mono font-semibold text-slate-300 bg-slate-900/80 backdrop-blur-sm px-1.5 py-0.5 rounded border border-slate-700">
                         #{s.id}
                       </span>
+                      {s.categoryName && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-950/80 border border-rose-500/40 text-rose-300">
+                          {s.categoryName}
+                        </span>
+                      )}
                       {s.isCombo && s.comboItems && s.comboItems.length > 0 && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400/25 border border-amber-300/40 text-amber-200">
                           {s.comboItems.length} dịch vụ con
@@ -686,7 +733,7 @@ const AdminServicesPage = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmitForm} className="space-y-5 text-xs">
+            <form onSubmit={handleSubmitForm} noValidate className="space-y-5 text-xs">
               {/* Chọn loại: Dịch vụ Đơn hay Gói Combo */}
               <div>
                 <label className="block text-slate-300 font-semibold mb-2">Loại Dịch Vụ *</label>
@@ -736,6 +783,23 @@ const AdminServicesPage = () => {
                   placeholder={formData.isCombo ? 'Ví dụ: Combo Cô Dâu Hoàn Hảo (Makeup + Tóc + Mi)' : 'Ví dụ: Trang Điểm Cô Dâu Ngày Cưới'}
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
                 />
+              </div>
+
+              {/* Phân loại Danh Mục (Chuẩn hóa 3NF) */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">Phân Loại Danh Mục (3NF)</label>
+                <select
+                  value={formData.categoryId || ''}
+                  onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 cursor-pointer"
+                >
+                  <option value="">-- Chưa gán danh mục (Tự do) --</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* KHU VỰC CHỌN MÓN CHO GÓI COMBO TRỰC QUAN */}
@@ -812,7 +876,7 @@ const AdminServicesPage = () => {
                   <div className="pt-3 border-t border-slate-800 grid grid-cols-2 gap-3 text-xs bg-slate-900/80 p-3 rounded-xl">
                     <div>
                       <span className="text-slate-400 block text-[11px]">Tổng giá gốc các món:</span>
-                      <span className="text-base font-bold text-amber-400 font-serif">
+                      <span className="text-base font-bold text-amber-400 font-sans">
                         {formatCurrency(comboCalculations.originalPrice)}
                       </span>
                     </div>
@@ -828,7 +892,7 @@ const AdminServicesPage = () => {
                           Áp dụng ngay
                         </button>
                       </div>
-                      <span className="text-base font-bold text-white font-serif">
+                      <span className="text-base font-bold text-white font-sans">
                         {comboCalculations.suggestedDuration} phút
                       </span>
                     </div>
@@ -852,8 +916,8 @@ const AdminServicesPage = () => {
                   <input
                     type="number"
                     required
-                    min={1000}
-                    step={10000}
+                    min={0}
+                    step="any"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                     placeholder="Ví dụ: 1500000"
@@ -866,8 +930,8 @@ const AdminServicesPage = () => {
                   <input
                     type="number"
                     required
-                    min={15}
-                    step={15}
+                    min={1}
+                    step={1}
                     value={formData.duration}
                     onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                     placeholder="60"
@@ -915,38 +979,22 @@ const AdminServicesPage = () => {
                       type="url"
                       value={formData.image}
                       onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                      placeholder="Dán URL ảnh trực tiếp (Cloudinary, Unsplash,...) hoặc bấm nút tải ảnh bên trên"
+                      placeholder="Dán URL ảnh trực tiếp (Cloudinary, Imgur,...) hoặc bấm nút tải ảnh bên trên"
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-xs"
                     />
                   </div>
                   {/* Khung xem trước ảnh thu nhỏ thực tế */}
-                  <div className="w-14 h-11 rounded-xl overflow-hidden border border-slate-700 shrink-0 bg-slate-950 relative shadow-md">
-                    <img
-                      src={formData.image || PRESET_IMAGES[0].url}
-                      alt="Thumbnail preview"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { e.target.src = PRESET_IMAGES[0].url; }}
-                    />
-                  </div>
-                </div>
-
-                {/* Danh sách ảnh mẫu preset click chọn nhanh */}
-                <div className="pt-1">
-                  <p className="text-[10px] text-slate-500 mb-1.5 font-medium">Hoặc bấm chọn nhanh ảnh mẫu có sẵn:</p>
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                    {PRESET_IMAGES.map((p, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, image: p.url })}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold shrink-0 border transition-all ${formData.image === p.url
-                          ? 'bg-rose-500/20 text-rose-300 border-rose-500'
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
-                          }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
+                  <div className="w-14 h-11 rounded-xl overflow-hidden border border-slate-700 shrink-0 bg-slate-950 relative shadow-md flex items-center justify-center">
+                    {formData.image ? (
+                      <img
+                        src={formData.image}
+                        alt="Thumbnail preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <ImageIcon className="w-5 h-5 text-slate-600" />
+                    )}
                   </div>
                 </div>
               </div>

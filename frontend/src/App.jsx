@@ -18,6 +18,8 @@ import BookingPage from './pages/BookingPage';
 import MyBookingsPage from './pages/MyBookingsPage';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
+import ProfilePage from './pages/ProfilePage';
+import VNPayReturnPage from './pages/VNPayReturnPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Admin Pages
@@ -26,6 +28,7 @@ import AdminServicesPage from './pages/admin/AdminServicesPage';
 import AdminBookingsPage from './pages/admin/AdminBookingsPage';
 import AdminSchedulesPage from './pages/admin/AdminSchedulesPage';
 import AdminArtistsPage from './pages/admin/AdminArtistsPage';
+import AdminVouchersPage from './pages/admin/AdminVouchersPage';
 
 // Artist Pages
 import ArtistDashboardPage from './pages/artist/ArtistDashboardPage';
@@ -51,9 +54,11 @@ function App() {
               <Route path="booking" element={<BookingPage />} />
               <Route path="login" element={<LoginPage />} />
               <Route path="register" element={<RegisterPage />} />
+              <Route path="payment/vnpay-return" element={<VNPayReturnPage />} />
 
-              {/* Tuyến đường yêu cầu đăng nhập: Lịch sử đặt lịch */}
+              {/* Tuyến đường yêu cầu đăng nhập: Hồ sơ cá nhân & Lịch sử đặt lịch */}
               <Route element={<ProtectedRoute />}>
+                <Route path="profile" element={<ProfilePage />} />
                 <Route path="my-bookings" element={<MyBookingsPage />} />
                 <Route path="account/bookings" element={<Navigate to="/my-bookings" replace />} />
               </Route>
@@ -67,6 +72,7 @@ function App() {
                 <Route path="bookings" element={<AdminBookingsPage />} />
                 <Route path="artists" element={<AdminArtistsPage />} />
                 <Route path="schedules" element={<AdminSchedulesPage />} />
+                <Route path="vouchers" element={<AdminVouchersPage />} />
               </Route>
             </Route>
 

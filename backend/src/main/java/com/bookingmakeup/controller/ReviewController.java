@@ -17,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.util.HtmlUtils;
 
 import java.util.HashMap;
 import java.util.List;
@@ -45,7 +46,9 @@ public class ReviewController {
     ) {
         Long bookingId = Long.valueOf(body.get("bookingId").toString());
         Integer rating = Integer.valueOf(body.get("rating").toString());
-        String comment = body.containsKey("comment") && body.get("comment") != null ? body.get("comment").toString().trim() : "";
+        String rawComment = body.containsKey("comment") && body.get("comment") != null ? body.get("comment").toString().trim() : "";
+        // Tự động escape các ký tự đặc biệt HTML/Script để phòng chống XSS Injection
+        String comment = HtmlUtils.htmlEscape(rawComment);
 
         if (rating < 1 || rating > 5) {
             throw new BadRequestException("Số sao đánh giá phải từ 1 đến 5 sao");
@@ -56,6 +59,11 @@ public class ReviewController {
 
         if (!booking.getUser().getId().equals(currentUser.getId())) {
             throw new BadRequestException("Bạn chỉ có thể đánh giá cho đơn đặt lịch của chính mình");
+        }
+
+        boolean isCancelled = booking.getStatus() == BookingStatus.CANCELLED || (booking.getNotes() != null && (booking.getNotes().contains("[Lý do hủy") || booking.getNotes().contains("[HOÀN CỌC") || booking.getNotes().contains("[ĐÃ HOÀN CỌC") || booking.getNotes().contains("[Tự động hủy")));
+        if (isCancelled) {
+            throw new BadRequestException("Đơn đặt lịch đã bị hủy, không được phép gửi đánh giá.");
         }
 
         if (booking.getStatus() != BookingStatus.COMPLETED) {
@@ -113,6 +121,14 @@ public class ReviewController {
     @GetMapping("/booking/{bookingId}")
     @Transactional(readOnly = true)
     public ApiResponse<Map<String, Object>> getReviewByBooking(@PathVariable Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId).orElse(null);
+        if (booking != null) {
+            boolean isCancelled = booking.getStatus() == BookingStatus.CANCELLED || (booking.getNotes() != null && (booking.getNotes().contains("[Lý do hủy") || booking.getNotes().contains("[HOÀN CỌC") || booking.getNotes().contains("[ĐÃ HOÀN CỌC") || booking.getNotes().contains("[Tự động hủy")));
+            if (isCancelled) {
+                return ApiResponse.success("Đơn đã bị hủy không có đánh giá", null);
+            }
+        }
+
         Optional<Review> reviewOpt = reviewRepository.findByBookingId(bookingId);
         if (reviewOpt.isEmpty()) {
             return ApiResponse.success("Đơn chưa có đánh giá", null);

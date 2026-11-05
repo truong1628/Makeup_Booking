@@ -1,20 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  Sparkles, Clock, Calendar, Check, Layers, AlertCircle, 
-  Search, SlidersHorizontal, Tag, ArrowUpDown, Heart
+  Sparkles, Clock, Calendar, AlertCircle, 
+  Search, Tag, ArrowUpDown
 } from 'lucide-react';
 import { serviceService } from '../services/serviceService';
+import { categoryService } from '../services/categoryService';
 import { formatCurrency } from '../utils/format';
 
 const ServicesPage = () => {
   const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'SINGLE' | 'COMBO'
-  const [selectedCategory, setSelectedCategory] = useState('ALL'); // 'ALL' | 'BRIDAL' | 'PARTY' | 'PHOTO' | 'NATURAL'
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('DEFAULT'); // 'DEFAULT' | 'PRICE_ASC' | 'PRICE_DESC' | 'DURATION_ASC'
 
   const [services, setServices] = useState([]);
   const [combos, setCombos] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -23,12 +25,16 @@ const ServicesPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const [servicesRes, combosRes] = await Promise.all([
+        const [servicesRes, combosRes, categoriesRes] = await Promise.all([
           serviceService.getServices(),
           serviceService.getCombos(),
+          categoryService.getCategories().catch(() => []),
         ]);
         setServices(servicesRes);
         setCombos(combosRes);
+        if (Array.isArray(categoriesRes) && categoriesRes.length > 0) {
+          setCategories(categoriesRes);
+        }
       } catch (err) {
         setError(err.message || 'Không thể tải danh sách dịch vụ');
       } finally {
@@ -40,24 +46,40 @@ const ServicesPage = () => {
 
   const singleServices = services.filter((s) => !s.isCombo);
 
-  // Categories list
+  // Danh sách tabs danh mục (động từ CSDL)
   const categoryFilters = [
     { key: 'ALL', label: 'Tất Cả Danh Mục' },
-    { key: 'BRIDAL', label: '👰 Cô Dâu Ngày Cưới' },
-    { key: 'PARTY', label: '✨ Dự Tiệc & Sự Kiện' },
-    { key: 'PHOTO', label: '📸 Chụp Ảnh & Profile' },
-    { key: 'NATURAL', label: '🌸 Tự Nhiên Hàng Ngày' },
+    ...(categories.length > 0
+      ? categories.map((c) => ({
+          key: c.code || String(c.id),
+          id: c.id,
+          label: c.name,
+        }))
+      : [
+          { key: 'BRIDAL', label: '👰 Cô Dâu Ngày Cưới' },
+          { key: 'PARTY', label: '✨ Dự Tiệc & Sự Kiện' },
+          { key: 'PHOTO', label: '📸 Chụp Ảnh & Profile' },
+          { key: 'NATURAL', label: '🌸 Tự Nhiên Hàng Ngày' },
+        ]),
   ];
 
-  // Helper matching category based on service name or description
-  const matchCategory = (item, cat) => {
-    if (cat === 'ALL') return true;
+  // Helper matching category dựa trên categoryCode/categoryId chuẩn hóa từ CSDL
+  const matchCategory = (item, catKey) => {
+    if (catKey === 'ALL') return true;
+    if (item.categoryCode && item.categoryCode.toUpperCase() === catKey.toUpperCase()) return true;
+    if (item.categoryId && String(item.categoryId) === String(catKey)) return true;
+
+    const catObj = categories.find((c) => c.code === catKey || String(c.id) === String(catKey));
+    if (catObj && item.categoryName && item.categoryName.toLowerCase() === catObj.name.toLowerCase()) return true;
+
+    // Fallback tìm kiếm từ khóa
     const text = (item.serviceName + ' ' + (item.description || '')).toLowerCase();
-    if (cat === 'BRIDAL') return text.includes('cô dâu') || text.includes('cưới') || text.includes('hôn lễ');
-    if (cat === 'PARTY') return text.includes('tiệc') || text.includes('dạ hội') || text.includes('sự kiện') || text.includes('glam');
-    if (cat === 'PHOTO') return text.includes('ảnh') || text.includes('profile') || text.includes('kỷ yếu') || text.includes('concept');
-    if (cat === 'NATURAL') return text.includes('tự nhiên') || text.includes('hàn quốc') || text.includes('nhẹ nhàng') || text.includes('cá nhân');
-    return true;
+    if (catKey === 'BRIDAL') return text.includes('cô dâu') || text.includes('cưới') || text.includes('hôn lễ');
+    if (catKey === 'PARTY') return text.includes('tiệc') || text.includes('dạ hội') || text.includes('sự kiện') || text.includes('glam');
+    if (catKey === 'PHOTO') return text.includes('ảnh') || text.includes('profile') || text.includes('kỷ yếu') || text.includes('concept');
+    if (catKey === 'NATURAL') return text.includes('tự nhiên') || text.includes('hàn quốc') || text.includes('nhẹ nhàng') || text.includes('cá nhân');
+    if (catKey === 'HAIR') return text.includes('tóc') || text.includes('uốn') || text.includes('búi');
+    return false;
   };
 
   // Filter & Search Logic
@@ -85,12 +107,27 @@ const ServicesPage = () => {
       );
     }
 
-    // Sort logic
+    // Sort logic: Mặc định ưu tiên Combo hiện trước, sau đó sắp xếp theo giá từ thấp đến cao
     return [...list].sort((a, b) => {
-      if (sortBy === 'PRICE_ASC') return Number(a.price) - Number(b.price);
-      if (sortBy === 'PRICE_DESC') return Number(b.price) - Number(a.price);
-      if (sortBy === 'DURATION_ASC') return Number(a.duration) - Number(b.duration);
-      return 0;
+      if (sortBy === 'PRICE_ASC') {
+        const comboDiff = Number(Boolean(b.isCombo)) - Number(Boolean(a.isCombo));
+        if (comboDiff !== 0) return comboDiff;
+        return Number(a.price || 0) - Number(b.price || 0);
+      }
+      if (sortBy === 'PRICE_DESC') {
+        const comboDiff = Number(Boolean(b.isCombo)) - Number(Boolean(a.isCombo));
+        if (comboDiff !== 0) return comboDiff;
+        return Number(b.price || 0) - Number(a.price || 0);
+      }
+      if (sortBy === 'DURATION_ASC') {
+        const comboDiff = Number(Boolean(b.isCombo)) - Number(Boolean(a.isCombo));
+        if (comboDiff !== 0) return comboDiff;
+        return Number(a.duration || 0) - Number(b.duration || 0);
+      }
+      // DEFAULT: Combo hiện trước + Giá từ thấp đến cao
+      const comboDiff = Number(Boolean(b.isCombo)) - Number(Boolean(a.isCombo));
+      if (comboDiff !== 0) return comboDiff;
+      return Number(a.price || 0) - Number(b.price || 0);
     });
   };
 
@@ -103,26 +140,27 @@ const ServicesPage = () => {
   const displayedList = getFilteredItems();
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
-      {/* Title Header */}
-      <div className="text-center max-w-3xl mx-auto space-y-4">
-        <span className="text-xs font-bold tracking-widest text-rose-600 uppercase bg-rose-50 px-3.5 py-1 rounded-full border border-rose-100">
-          Menu Dịch Vụ Nghệ Thuật
-        </span>
-        <h1 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-12 space-y-4 sm:space-y-5">
+      {/* Title Header - Tối ưu thu gọn gọn gàng, tinh tế */}
+      <div className="text-center max-w-2xl mx-auto space-y-1.5">
+        <div className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-rose-600 uppercase bg-rose-50/90 px-2.5 py-0.5 rounded-full border border-rose-100">
+          <Sparkles className="w-3 h-3 text-rose-500" />
+          <span>Menu Dịch Vụ Nghệ Thuật</span>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
           Bảng Giá Dịch Vụ & Gói Combo
         </h1>
-        <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-          Tất cả dịch vụ sử dụng 100% mỹ phẩm High-end chính hãng (Dior, Chanel, Charlotte Tilbury, MAC, Tom Ford) và thực hiện bởi đội ngũ nghệ sĩ makeup chuyên nghiệp.
+        <p className="text-xs sm:text-sm text-slate-500 max-w-xl mx-auto line-clamp-1 sm:line-clamp-none">
+          100% mỹ phẩm High-End chính hãng (Dior, Chanel, MAC...) bởi đội ngũ nghệ sĩ chuyên nghiệp.
         </p>
 
         {/* Primary Type Tabs: All / Combo / Single */}
-        <div className="inline-flex p-1.5 rounded-full bg-slate-100 border border-slate-200 mt-4 shadow-xs">
+        <div className="inline-flex p-1 rounded-full bg-slate-100 border border-slate-200/80 mt-2 shadow-2xs">
           <button
             onClick={() => setActiveTab('ALL')}
-            className={`px-5 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all ${
+            className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-all ${
               activeTab === 'ALL'
-                ? 'bg-white text-slate-900 shadow-sm'
+                ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -130,20 +168,20 @@ const ServicesPage = () => {
           </button>
           <button
             onClick={() => setActiveTab('COMBO')}
-            className={`px-5 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${
+            className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1 ${
               activeTab === 'COMBO'
-                ? 'bg-rose-600 text-white shadow-sm'
+                ? 'bg-rose-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-rose-600'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Gói Combo Tiết Kiệm ({combos.length})</span>
+            <Sparkles className="w-3 h-3" />
+            <span>Gói Combo ({combos.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('SINGLE')}
-            className={`px-5 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all ${
+            className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-all ${
               activeTab === 'SINGLE'
-                ? 'bg-white text-slate-900 shadow-sm'
+                ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -152,29 +190,29 @@ const ServicesPage = () => {
         </div>
       </div>
 
-      {/* Search & Category Filter Toolbar */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+      {/* Search & Category Filter Toolbar - Thu gọn gọn nhẹ */}
+      <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl border border-slate-200/80 shadow-xs space-y-2.5">
+        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-4 items-center justify-between">
           {/* Search input */}
-          <div className="relative w-full md:w-80">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm kiếm dịch vụ, layout makeup..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all bg-slate-50/50"
+              className="w-full pl-8.5 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all bg-slate-50/50"
             />
           </div>
 
           {/* Sort selector */}
-          <div className="flex items-center gap-2 w-full md:w-auto self-end md:self-auto">
-            <ArrowUpDown className="w-4 h-4 text-slate-400 shrink-0" />
-            <span className="text-xs font-semibold text-slate-600 shrink-0">Sắp xếp:</span>
+          <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="text-xs font-semibold text-slate-500 shrink-0">Sắp xếp:</span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
             >
               <option value="DEFAULT">Mặc định phổ biến</option>
               <option value="PRICE_ASC">Giá: Thấp đến Cao</option>
@@ -185,19 +223,19 @@ const ServicesPage = () => {
         </div>
 
         {/* Category Pills Filter */}
-        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 overflow-x-auto pb-1">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1 mr-1">
-            <Tag className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 overflow-x-auto pb-0.5 scrollbar-none">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1 mr-0.5">
+            <Tag className="w-3 h-3" />
             <span>Phân loại:</span>
           </span>
           {categoryFilters.map((cat) => (
             <button
               key={cat.key}
               onClick={() => setSelectedCategory(cat.key)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
                 selectedCategory === cat.key
-                  ? 'bg-rose-500 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800'
+                  ? 'bg-rose-500 text-white shadow-2xs font-semibold'
+                  : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
               }`}
             >
               {cat.label}
@@ -250,11 +288,18 @@ const ServicesPage = () => {
             >
               {/* Image Container with Title & Price OVERLAID directly on it */}
               <Link to={`/services/${item.id}`} className="block relative aspect-[4/5] bg-slate-900 overflow-hidden cursor-pointer">
-                <img
-                  src={item.image || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80'}
-                  alt={cleanTitle(item.serviceName)}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
+                {item.image ? (
+                  <img
+                    src={item.image}
+                    alt={cleanTitle(item.serviceName)}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-slate-900 via-rose-950/60 to-slate-900 flex flex-col items-center justify-center text-slate-400 p-4">
+                    <Sparkles className="w-10 h-10 text-rose-400/70 mb-2 animate-pulse" />
+                    <span className="text-xs text-rose-200/80 font-medium">Studio DungDorys</span>
+                  </div>
+                )}
 
                 {/* Dark Gradient Overlay for high-contrast legibility */}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent pointer-events-none" />

@@ -2,42 +2,55 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Sparkles, Calendar, DollarSign, Users, Clock,
-  ArrowUpRight, CheckCircle2, AlertCircle, PlusCircle
+  ArrowUpRight, PlusCircle, TrendingUp
 } from 'lucide-react';
 import { serviceService } from '../../services/serviceService';
 import { bookingService } from '../../services/bookingService';
-import { formatCurrency, formatDate, formatTime, getStatusBadge } from '../../utils/format';
+import axiosInstance from '../../services/axiosInstance';
+import { formatCurrency, formatTime, getStatusBadge } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
+import ArtistRevenueStats from '../../components/admin/ArtistRevenueStats';
 
 const AdminDashboardPage = () => {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const [servicesCount, setServicesCount] = useState(0);
   const [allBookings, setAllBookings] = useState([]);
   const [recentBookings, setRecentBookings] = useState([]);
+  const [artists, setArtists] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const loadDashboardData = async () => {
+    try {
+      const [servicesRes, bookingsRes, artistsRes] = await Promise.all([
+        serviceService.getServices(),
+        bookingService.getAllBookings().catch(() => []),
+        axiosInstance.get('/api/v1/admin/artists').then((r) => r.data || []).catch(() => []),
+      ]);
+      setServicesCount(servicesRes.length);
+      setAllBookings(bookingsRes);
+      setRecentBookings(bookingsRes.slice(0, 5));
+      setArtists(Array.isArray(artistsRes) ? artistsRes : []);
+    } catch (err) {
+      console.error('Lỗi khi tải dữ liệu dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadDashboardData = async () => {
-      try {
-        const [servicesRes, bookingsRes] = await Promise.all([
-          serviceService.getServices(),
-          bookingService.getAllBookings().catch(() => []),
-        ]);
-        setServicesCount(servicesRes.length);
-        setAllBookings(bookingsRes);
-        setRecentBookings(bookingsRes.slice(0, 5));
-      } catch (err) {
-        console.error('Lỗi khi tải dữ liệu dashboard:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
     loadDashboardData();
   }, []);
 
   const totalRevenue = allBookings
-    .filter((b) => b.status !== 'CANCELLED')
+    .filter((b) => {
+      const isCancelled = b.status === 'CANCELLED' || Boolean(b.notes && (b.notes.includes('[Lý do hủy') || b.notes.includes('[HOÀN CỌC') || b.notes.includes('[ĐÃ HOÀN CỌC')));
+      return !isCancelled;
+    })
     .reduce((sum, b) => sum + (Number(b.totalPrice) || 0), 0);
+
+  const activeArtistsCount = artists.length > 0
+    ? artists.filter((a) => a.active !== false).length
+    : 2;
 
   const stats = [
     {
@@ -56,7 +69,7 @@ const AdminDashboardPage = () => {
     },
     {
       title: 'Chuyên Gia Makeup Active',
-      value: '2',
+      value: activeArtistsCount,
       change: 'Sẵn sàng nhận lịch',
       icon: Users,
       color: 'from-emerald-500 to-teal-500',
@@ -89,20 +102,20 @@ const AdminDashboardPage = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
             <div
               key={i}
-              className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 shadow-md flex items-center justify-between"
+              className="p-5 rounded-3xl bg-slate-900/60 border border-slate-800 shadow-md flex items-center justify-between gap-3 min-w-0"
             >
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-slate-400">{stat.title}</p>
-                <p className="font-serif text-2xl font-bold text-white">{stat.value}</p>
-                <p className="text-[11px] text-emerald-400 font-medium">{stat.change}</p>
+              <div className="space-y-1 min-w-0 flex-1">
+                <p className="text-xs font-semibold text-slate-400 truncate" title={stat.title}>{stat.title}</p>
+                <p className="font-sans text-xl sm:text-2xl font-bold text-white truncate" title={String(stat.value)}>{stat.value}</p>
+                <p className="text-[11px] text-emerald-400 font-medium truncate">{stat.change}</p>
               </div>
-              <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${stat.color} flex items-center justify-center text-white shadow-lg`}>
+              <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${stat.color} flex items-center justify-center text-white shadow-lg shrink-0`}>
                 <Icon className="w-6 h-6" />
               </div>
             </div>
@@ -111,9 +124,9 @@ const AdminDashboardPage = () => {
       </div>
 
       {/* Quick Actions & Recent Bookings */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Recent Bookings Table */}
-        <div className="lg:col-span-8 p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
+        <div className="xl:col-span-8 p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4 w-full min-w-0">
           <div className="flex items-center justify-between">
             <h3 className="font-serif text-lg font-bold text-white flex items-center gap-2">
               <Calendar className="w-5 h-5 text-rose-400" />
@@ -131,7 +144,7 @@ const AdminDashboardPage = () => {
           {recentBookings.length === 0 ? (
             <p className="text-xs text-slate-500 py-8 text-center">Chưa có đơn đặt lịch nào gần đây.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto w-full min-w-0">
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-950/60 text-slate-400 uppercase text-[10px] tracking-wider">
                   <tr>
@@ -144,17 +157,19 @@ const AdminDashboardPage = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {recentBookings.map((b) => {
-                    const status = getStatusBadge(b.status);
+                    const isCancelled = b.status === 'CANCELLED' || Boolean(b.notes && (b.notes.includes('[Lý do hủy') || b.notes.includes('[HOÀN CỌC') || b.notes.includes('[ĐÃ HOÀN CỌC')));
+                    const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
+                    const status = getStatusBadge(effectiveStatus);
                     return (
                       <tr key={b.id} className="hover:bg-slate-800/30 transition-colors">
                         <td className="py-3 px-4 font-bold text-white">#{b.id}</td>
                         <td className="py-3 px-4">{b.bookingDate} {formatTime(b.bookingTime)}</td>
                         <td className="py-3 px-4">
                           <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-semibold">
-                            {b.locationType}
+                            {b.locationType === 'HOME' ? 'Tại Nhà' : 'Tại Studio'}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-bold text-rose-400 font-serif">
+                        <td className="py-3 px-4 font-bold text-rose-400 font-sans">
                           {formatCurrency(b.totalPrice)}
                         </td>
                         <td className="py-3 px-4">
@@ -172,7 +187,7 @@ const AdminDashboardPage = () => {
         </div>
 
         {/* Quick Actions Panel */}
-        <div className="lg:col-span-4 p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
+        <div className="xl:col-span-4 p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4 w-full min-w-0">
           <h3 className="font-serif text-lg font-bold text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-400" />
             <span>Thao Tác Nhanh</span>
@@ -226,8 +241,34 @@ const AdminDashboardPage = () => {
               </div>
               <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-emerald-400" />
             </Link>
+
+            <a
+              href="#artist-revenue-section"
+              className="flex items-center justify-between p-4 rounded-2xl bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 text-slate-200 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold group-hover:text-purple-400 transition-colors">Doanh Thu Thợ Makeup</p>
+                  <p className="text-[11px] text-slate-500">Xem thống kê số tiền từng thợ</p>
+                </div>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400" />
+            </a>
           </div>
         </div>
+      </div>
+
+      {/* Bảng Thống Kê Số Tiền Từng Chuyên Viên Kiếm Được */}
+      <div id="artist-revenue-section" className="pt-2">
+        <ArtistRevenueStats
+          artists={artists}
+          bookings={allBookings}
+          loading={loading}
+          onRefresh={loadDashboardData}
+        />
       </div>
     </div>
   );

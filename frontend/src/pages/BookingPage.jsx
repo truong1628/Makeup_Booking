@@ -3,12 +3,15 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   Calendar, Clock, MapPin, Sparkles, CheckCircle2,
   AlertCircle, ShieldCheck, ChevronRight, ChevronLeft,
-  Home, Building2, Layers, User, Users, Award, CreditCard, ArrowRight, Check,
-  Plus, Minus, Zap, Coffee, HelpCircle, Flame, Heart, AlertTriangle,
-  Upload, Image as ImageIcon, Camera, Trash2, Palette, FileText, CheckCircle
+  Home, Building2, Layers, Users, CreditCard, ArrowRight, Check,
+  Plus, Minus, Zap, Coffee, Flame, AlertTriangle,
+  Upload, Camera, Trash2, Palette, FileText,
+  Eye, X, Tag, Gift, Mail, Phone
 } from 'lucide-react';
 import { serviceService } from '../services/serviceService';
 import { bookingService } from '../services/bookingService';
+import { layoutService } from '../services/layoutService';
+import { voucherService } from '../services/voucherService';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatCurrency, calculateTravelFee } from '../utils/format';
@@ -24,6 +27,8 @@ export const LAYOUT_OPTIONS = [
     gradient: 'from-pink-500/10 via-rose-500/5 to-white',
     borderActive: 'border-pink-500 ring-2 ring-pink-500/20 bg-pink-50/40',
     badgeClass: 'bg-pink-100 text-pink-700 border-pink-200',
+    category: 'Dự Tiệc',
+    searchKeyword: 'Douyin',
   },
   {
     id: 'KOREAN',
@@ -34,6 +39,8 @@ export const LAYOUT_OPTIONS = [
     gradient: 'from-amber-500/10 via-orange-500/5 to-white',
     borderActive: 'border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/40',
     badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
+    category: 'Hàn Quốc',
+    searchKeyword: 'Hàn Quốc',
   },
   {
     id: 'WESTERN',
@@ -44,6 +51,8 @@ export const LAYOUT_OPTIONS = [
     gradient: 'from-stone-500/10 via-amber-700/5 to-white',
     borderActive: 'border-stone-600 ring-2 ring-stone-600/20 bg-stone-50/50',
     badgeClass: 'bg-stone-200 text-stone-800 border-stone-300',
+    category: 'Thời Trang',
+    searchKeyword: 'Tây',
   },
   {
     id: 'THAI',
@@ -54,6 +63,8 @@ export const LAYOUT_OPTIONS = [
     gradient: 'from-orange-500/10 via-rose-500/5 to-white',
     borderActive: 'border-orange-500 ring-2 ring-orange-500/20 bg-orange-50/40',
     badgeClass: 'bg-orange-100 text-orange-800 border-orange-200',
+    category: 'Tone Thái',
+    searchKeyword: 'Thái',
   },
   {
     id: 'VINTAGE',
@@ -64,6 +75,8 @@ export const LAYOUT_OPTIONS = [
     gradient: 'from-rose-600/10 via-red-600/5 to-white',
     borderActive: 'border-rose-600 ring-2 ring-rose-600/20 bg-rose-50/40',
     badgeClass: 'bg-rose-100 text-rose-800 border-rose-200',
+    category: 'Cô Dâu',
+    searchKeyword: 'Cổ Điển',
   },
   {
     id: 'CUSTOM',
@@ -74,11 +87,13 @@ export const LAYOUT_OPTIONS = [
     gradient: 'from-purple-500/10 via-indigo-500/5 to-white',
     borderActive: 'border-purple-600 ring-2 ring-purple-600/20 bg-purple-50/40',
     badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
+    category: 'Tất cả',
+    searchKeyword: '',
   },
 ];
 
 const BookingPage = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isAdmin, isArtist } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -154,19 +169,83 @@ const BookingPage = () => {
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   // Step 4: Layout & Face Avatar & Notes
+  const [layouts, setLayouts] = useState(LAYOUT_OPTIONS);
   const [selectedLayout, setSelectedLayout] = useState('Tone Douyin / Baby Trong Trẻo');
   const [customLayoutText, setCustomLayoutText] = useState('');
   const [faceImage, setFaceImage] = useState(null); // Base64 data URL
   const [faceImageName, setFaceImageName] = useState('');
   const [bookingNotes, setBookingNotes] = useState('');
+  const [portfolioRef, setPortfolioRef] = useState(null); // Mẫu ảnh tham khảo từ bộ sưu tập
 
   // Step 5: Payment & Completion
   const [createdBooking, setCreatedBooking] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('VNPAY'); // 'VNPAY' | 'AT_STUDIO'
   const [showStudioConfirmModal, setShowStudioConfirmModal] = useState(false);
   const [showVNPayModal, setShowVNPayModal] = useState(false);
+  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
   const [vnpayData, setVnpayData] = useState(null);
   const [vnpayProcessing, setVnpayProcessing] = useState(false);
+
+  // Step 5: Contact Confirmation (Email & SĐT)
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+
+  // Tự động điền email & SĐT từ tài khoản đăng nhập của người dùng
+  useEffect(() => {
+    if (user) {
+      if (user.email && !contactEmail) setContactEmail(user.email);
+      if (user.phone && !contactPhone) setContactPhone(user.phone);
+    }
+  }, [user]);
+
+  // Voucher & Discount State
+  const [availableVouchers, setAvailableVouchers] = useState([]);
+  const [personalVouchers, setPersonalVouchers] = useState([]);
+  const [userTierInfo, setUserTierInfo] = useState(null);
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
+  const [appliedVoucher, setAppliedVoucher] = useState(null);
+  const [voucherDiscount, setVoucherDiscount] = useState(0);
+  const [isCheckingVoucher, setIsCheckingVoucher] = useState(false);
+  const [voucherMsg, setVoucherMsg] = useState(null);
+
+  // Khôi phục bản nháp đặt lịch từ sessionStorage nếu quay lại từ bộ sưu tập
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('makeup_booking_draft');
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft) {
+          if (draft.currentStep) setCurrentStep(draft.currentStep);
+          if (draft.selectedServiceIds?.length > 0) setSelectedServiceIds(draft.selectedServiceIds);
+          if (draft.serviceQuantities) setServiceQuantities(draft.serviceQuantities);
+          if (draft.locationType) setLocationType(draft.locationType);
+          if (draft.homeAddress) setHomeAddress(draft.homeAddress);
+          if (draft.addressDetails) setAddressDetails(draft.addressDetails);
+          if (draft.distanceKm) setDistanceKm(draft.distanceKm);
+          if (draft.bookingDate) setBookingDate(draft.bookingDate);
+          if (draft.userStartTime) setUserStartTime(draft.userStartTime);
+          if (draft.userEndTime) setUserEndTime(draft.userEndTime);
+          if (draft.dispatchPlan) setDispatchPlan(draft.dispatchPlan);
+          if (draft.selectedLayout) setSelectedLayout(draft.selectedLayout);
+          if (draft.customLayoutText) setCustomLayoutText(draft.customLayoutText);
+          if (draft.faceImage) setFaceImage(draft.faceImage);
+          if (draft.faceImageName) setFaceImageName(draft.faceImageName);
+          if (draft.bookingNotes) setBookingNotes(draft.bookingNotes);
+          if (draft.selectedPortfolioRef || draft.selectedPortfolioTitle) {
+            const pRef = draft.selectedPortfolioRef || {
+              id: draft.selectedPortfolioId,
+              title: draft.selectedPortfolioTitle,
+              imageUrl: draft.selectedPortfolioImage,
+              artistName: draft.selectedPortfolioArtist,
+            };
+            setPortfolioRef(pRef);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc bản nháp đặt lịch:', e);
+    }
+  }, []);
 
   // Khách chọn Tại Nhà thì bắt buộc phải cọc online VNPay
   useEffect(() => {
@@ -181,24 +260,72 @@ const BookingPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const [servicesRes, combosRes, artistsRes] = await Promise.all([
+        const [servicesRes, combosRes, artistsRes, layoutsRes, vouchersRes] = await Promise.all([
           serviceService.getServices(),
           serviceService.getCombos(),
           bookingService.getArtists().catch(() => []),
+          layoutService.getLayouts().catch(() => []),
+          voucherService.getActiveVouchers().catch(() => []),
         ]);
         setServices(servicesRes);
         setCombos(combosRes);
         setArtists(Array.isArray(artistsRes) ? artistsRes : (Array.isArray(artistsRes?.data) ? artistsRes.data : []));
+        if (isAuthenticated) {
+          const mySummary = await voucherService.getMyVoucherSummary().catch(() => null);
+          if (mySummary) {
+            setUserTierInfo(mySummary.tierInfo);
+            setPersonalVouchers(mySummary.personalVouchers || []);
+            setAvailableVouchers(mySummary.publicVouchers || []);
+          } else if (Array.isArray(vouchersRes)) {
+            setAvailableVouchers(vouchersRes);
+          }
+        } else if (Array.isArray(vouchersRes)) {
+          setAvailableVouchers(vouchersRes);
+        }
 
-        // Pre-select service from URL if provided
-        if (preSelectedServiceId) {
-          const sId = Number(preSelectedServiceId);
-          setSelectedServiceIds([sId]);
-          setServiceQuantities({ [sId]: 1 });
-        } else if (servicesRes.length > 0) {
-          const sId = servicesRes[0].id;
-          setSelectedServiceIds([sId]);
-          setServiceQuantities({ [sId]: 1 });
+        if (Array.isArray(layoutsRes) && layoutsRes.length > 0) {
+          const formatted = layoutsRes.map((l) => ({
+            id: l.code || `LAYOUT_${l.id}`,
+            dbId: l.id,
+            name: l.name,
+            tag: l.tag || 'Mới',
+            desc: l.description || '',
+            suitableFor: l.suitableFor || '',
+            gradient: l.gradient || 'from-pink-500/10 via-rose-500/5 to-white',
+            borderActive: l.borderActive || 'border-pink-500 ring-2 ring-pink-500/20 bg-pink-50/40',
+            badgeClass: l.badgeClass || 'bg-pink-100 text-pink-700 border-pink-200',
+            category: l.category || 'Dự Tiệc',
+            searchKeyword: l.searchKeyword || '',
+            thumbnailUrl: l.thumbnailUrl,
+          }));
+          setLayouts(formatted);
+        }
+
+        // Kiểm tra xem đã có dịch vụ từ bản nháp sessionStorage chưa
+        let hasDraftServices = false;
+        try {
+          const raw = sessionStorage.getItem('makeup_booking_draft');
+          if (raw) {
+            const draft = JSON.parse(raw);
+            if (draft?.selectedServiceIds && draft.selectedServiceIds.length > 0) {
+              hasDraftServices = true;
+              setSelectedServiceIds(draft.selectedServiceIds);
+              if (draft.serviceQuantities) setServiceQuantities(draft.serviceQuantities);
+            }
+          }
+        } catch {}
+
+        // Pre-select service from URL if provided and no draft
+        if (!hasDraftServices) {
+          if (preSelectedServiceId) {
+            const sId = Number(preSelectedServiceId);
+            setSelectedServiceIds([sId]);
+            setServiceQuantities({ [sId]: 1 });
+          } else if (servicesRes.length > 0) {
+            const sId = servicesRes[0].id;
+            setSelectedServiceIds([sId]);
+            setServiceQuantities({ [sId]: 1 });
+          }
         }
       } catch (err) {
         setError('Không thể tải thông tin dịch vụ. Vui lòng tải lại trang.');
@@ -209,14 +336,25 @@ const BookingPage = () => {
     fetchData();
   }, [preSelectedServiceId]);
 
-  // List of all services (single + combos)
-  const allServicesCombined = [...combos, ...services.filter(s => !s.isCombo)];
+  // List of all services (Combo hiện trước, sau đó đến dịch vụ lẻ; trong mỗi nhóm sắp xếp giá từ thấp đến cao)
+  const allServicesCombined = [
+    ...[...combos].sort((a, b) => Number(a.price || 0) - Number(b.price || 0)),
+    ...services
+      .filter((s) => !s.isCombo)
+      .sort((a, b) => Number(a.price || 0) - Number(b.price || 0)),
+  ];
 
-  const displayedServices = allServicesCombined.filter((s) => {
-    if (serviceTypeFilter === 'COMBO') return s.isCombo;
-    if (serviceTypeFilter === 'SINGLE') return !s.isCombo;
-    return true;
-  });
+  const displayedServices = allServicesCombined
+    .filter((s) => {
+      if (serviceTypeFilter === 'COMBO') return s.isCombo;
+      if (serviceTypeFilter === 'SINGLE') return !s.isCombo;
+      return true;
+    })
+    .sort((a, b) => {
+      const comboDiff = Number(Boolean(b.isCombo)) - Number(Boolean(a.isCombo));
+      if (comboDiff !== 0) return comboDiff;
+      return Number(a.price || 0) - Number(b.price || 0);
+    });
 
   const selectedServicesList = allServicesCombined.filter((s) =>
     selectedServiceIds.includes(s.id)
@@ -419,22 +557,56 @@ const BookingPage = () => {
   const isOverMaxDistance = locationType === 'HOME' && Number(distanceKm) > 200;
 
   // Chiết khấu (Gói Tiết Kiệm giảm 15% cho nhóm từ 2 người trở lên)
-  const discountAmount = (activePlanCode === 'SAVING' && totalPeople >= 2)
+  const planDiscount = (activePlanCode === 'SAVING' && totalPeople >= 2)
     ? Math.round(servicesTotal * 0.15)
     : (currentPlan ? Number(currentPlan.discountAmount || 0) : 0);
 
-  const totalPrice = Math.max(0, servicesTotal - discountAmount + calculatedTravelFee + currentSurcharge);
+  const discountAmount = planDiscount;
+  const currentVoucherDiscount = appliedVoucher ? Number(voucherDiscount || 0) : 0;
+  const totalCombinedDiscount = discountAmount + currentVoucherDiscount;
+
+  const totalPrice = Math.max(0, servicesTotal - totalCombinedDiscount + calculatedTravelFee + currentSurcharge);
   const depositAmount = Math.round(totalPrice * 0.3);
 
   // Hiển thị giá theo từng bước (Progressive cost display theo tiến trình của khách hàng)
   const effectiveTravelFee = (currentStep >= 2 && locationType === 'HOME') ? calculatedTravelFee : 0;
-  const effectiveRushFee = currentStep >= 3 ? rushFee : 0;
-  const effectiveEarlyFee = currentStep >= 3 ? earlyFee : 0;
   const effectiveSurcharge = currentStep >= 3 ? (isSingleClientSingleService ? 0 : currentSurcharge) : 0;
-  const effectiveDiscount = currentStep >= 3 ? discountAmount : 0;
+  const effectiveDiscount = (currentStep >= 3 ? discountAmount : 0) + currentVoucherDiscount;
 
   const displayedTotalPrice = Math.max(0, servicesTotal - effectiveDiscount + effectiveTravelFee + effectiveSurcharge);
   const displayedDepositAmount = Math.round(displayedTotalPrice * 0.3);
+
+  const handleApplyVoucher = async (codeToApply) => {
+    const code = (codeToApply || voucherCodeInput || '').trim().toUpperCase();
+    if (!code) {
+      setVoucherMsg({ type: 'error', text: 'Vui lòng nhập mã voucher' });
+      return;
+    }
+    setIsCheckingVoucher(true);
+    setVoucherMsg(null);
+    try {
+      const res = await voucherService.applyVoucher(code, servicesTotal);
+      setAppliedVoucher(res.voucher || { code, name: res.voucherName });
+      setVoucherDiscount(Number(res.discountAmount || 0));
+      setVoucherCodeInput(code);
+      setVoucherMsg({ type: 'success', text: res.message || `Đã áp dụng mã ${code} (-${formatCurrency(res.discountAmount)})` });
+      toast.success(`🎉 Áp dụng voucher '${code}' thành công!`);
+    } catch (err) {
+      const errMsg = err?.message || 'Mã voucher không hợp lệ hoặc chưa đủ điều kiện áp dụng';
+      setVoucherMsg({ type: 'error', text: errMsg });
+      toast.error(errMsg);
+    } finally {
+      setIsCheckingVoucher(false);
+    }
+  };
+
+  const handleRemoveVoucher = () => {
+    setAppliedVoucher(null);
+    setVoucherDiscount(0);
+    setVoucherCodeInput('');
+    setVoucherMsg(null);
+    toast.info('Đã gỡ mã giảm giá');
+  };
 
   const displayStartTime = currentPlan ? currentPlan.startTime?.substring(0, 5) : userStartTime;
   const displayEndTime = currentPlan ? currentPlan.endTime?.substring(0, 5) : userEndTime;
@@ -525,6 +697,95 @@ const BookingPage = () => {
     toast.info('Đã xóa ảnh chân dung');
   };
 
+  // Xem chi tiết mẫu layout trong Bộ Sưu Tập tác phẩm
+  const handleViewCollectionLayout = (layout, e) => {
+    if (e) e.stopPropagation();
+    setSelectedLayout(layout.name);
+
+    // Lưu toàn bộ dữ liệu tiến trình đặt lịch hiện tại vào sessionStorage để không bị mất khi quay lại
+    const draft = {
+      currentStep: 4,
+      selectedServiceIds,
+      serviceQuantities,
+      locationType,
+      homeAddress,
+      addressDetails,
+      distanceKm,
+      bookingDate,
+      userStartTime,
+      userEndTime,
+      dispatchPlan,
+      selectedLayout: layout.name,
+      customLayoutText,
+      faceImage,
+      faceImageName,
+      bookingNotes,
+      selectedPortfolioRef: portfolioRef,
+    };
+    try {
+      sessionStorage.setItem('makeup_booking_draft', JSON.stringify(draft));
+    } catch (err) {
+      console.warn('Lỗi lưu bản nháp đặt lịch:', err);
+    }
+
+    const params = new URLSearchParams();
+    params.set('fromBooking', 'true');
+    params.set('layout', layout.name);
+    if (layout.searchKeyword) {
+      params.set('search', layout.searchKeyword);
+    }
+    if (layout.category && layout.category !== 'Tất cả') {
+      params.set('category', layout.category);
+    }
+    navigate(`/collections?${params.toString()}`);
+  };
+
+  // Xem giới thiệu chi tiết về các layout tại trang chủ (lưu nháp để có thể quay lại tiếp tục)
+  const handleGoToLayoutsIntro = () => {
+    const draft = {
+      currentStep: 4,
+      selectedServiceIds,
+      serviceQuantities,
+      locationType,
+      homeAddress,
+      addressDetails,
+      distanceKm,
+      bookingDate,
+      userStartTime,
+      userEndTime,
+      dispatchPlan,
+      selectedLayout,
+      customLayoutText,
+      faceImage,
+      faceImageName,
+      bookingNotes,
+      selectedPortfolioRef: portfolioRef,
+    };
+    try {
+      sessionStorage.setItem('makeup_booking_draft', JSON.stringify(draft));
+    } catch (err) {
+      console.warn('Lỗi lưu bản nháp đặt lịch:', err);
+    }
+    navigate('/?fromBookingStep4=true#layouts-intro');
+  };
+
+  const handleClearPortfolioRef = () => {
+    setPortfolioRef(null);
+    try {
+      const raw = sessionStorage.getItem('makeup_booking_draft');
+      if (raw) {
+        const draft = JSON.parse(raw);
+        delete draft.selectedPortfolioRef;
+        delete draft.selectedPortfolioId;
+        delete draft.selectedPortfolioTitle;
+        delete draft.selectedPortfolioImage;
+        delete draft.selectedPortfolioArtist;
+        sessionStorage.setItem('makeup_booking_draft', JSON.stringify(draft));
+      }
+    } catch {}
+    toast.info('Đã hủy tham khảo mẫu từ bộ sưu tập');
+  };
+
   const handleNextStep4 = () => {
     if (!selectedLayout) {
       toast.error('Vui lòng chọn 1 phong cách makeup (layout)');
@@ -543,6 +804,24 @@ const BookingPage = () => {
     if (!isAuthenticated) {
       toast.error('Vui lòng đăng nhập trước khi tiến hành thanh toán');
       navigate('/login?redirect=/booking');
+      return;
+    }
+
+    if (isAdmin || isArtist) {
+      toast.error('Tài khoản Quản trị viên (Admin) và Nghệ sĩ (Artist) không được phép thực hiện đặt lịch dịch vụ. Vui lòng sử dụng tài khoản Khách hàng.');
+      return;
+    }
+
+    // Kiểm tra xác nhận Email & Số điện thoại (Bước 5)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!contactEmail || !emailRegex.test(contactEmail.trim())) {
+      toast.error('Vui lòng kiểm tra và nhập địa chỉ Email nhận xác nhận hợp lệ');
+      return;
+    }
+
+    const cleanPhone = (contactPhone || '').trim().replace(/[\s.-]/g, '');
+    if (!cleanPhone || cleanPhone.length < 9 || !/^[0-9+]+$/.test(cleanPhone)) {
+      toast.error('Vui lòng nhập số điện thoại liên hệ hợp lệ (tối thiểu 10 chữ số)');
       return;
     }
 
@@ -567,6 +846,15 @@ const BookingPage = () => {
       ? (customLayoutText.trim() ? `Tùy Biến: ${customLayoutText.trim()}` : 'Tùy Biến Theo Yêu Cầu')
       : selectedLayout;
 
+    let finalNotes = bookingNotes.trim();
+    if (portfolioRef && !finalNotes.includes(portfolioRef.title)) {
+      finalNotes = finalNotes ? `${finalNotes}\n[Tham khảo ảnh mẫu: ${portfolioRef.title}]` : `[Tham khảo ảnh mẫu: ${portfolioRef.title}]`;
+    }
+
+    const matchedLayoutObj = layouts.find(
+      (l) => l.name === selectedLayout || l.id === selectedLayout
+    );
+
     const payload = {
       bookingDate,
       bookingTime: computedStart.length === 5 ? `${computedStart}:00` : computedStart,
@@ -578,9 +866,13 @@ const BookingPage = () => {
       surcharge: isSingleClientSingleService ? 0 : currentSurcharge,
       defaultArtistId: currentPlan?.timelines?.[0]?.artistId || null,
       items: bookingItems,
+      layoutId: matchedLayoutObj?.dbId || null,
       layout: finalLayout,
       customerImage: faceImage || null,
-      notes: bookingNotes.trim() || null,
+      notes: finalNotes || null,
+      voucherCode: appliedVoucher ? appliedVoucher.code : (voucherCodeInput.trim() || null),
+      contactEmail: contactEmail.trim(),
+      contactPhone: cleanPhone,
       ...(locationType === 'HOME' && {
         addressInfo: {
           address: addressDetails.trim()
@@ -595,6 +887,8 @@ const BookingPage = () => {
       // 1. Tạo đơn đặt lịch
       const bookingRes = await bookingService.createBooking(payload);
       setCreatedBooking(bookingRes);
+      // Xóa draft khỏi sessionStorage khi tạo đơn thành công
+      sessionStorage.removeItem('makeup_booking_draft');
 
       if (paymentMethod === 'AT_STUDIO') {
         // 2. Xác nhận hình thức thanh toán tại Studio (CASH)
@@ -602,11 +896,18 @@ const BookingPage = () => {
         toast.success('🎉 Đặt lịch thành công! Quý khách sẽ thanh toán tại studio. Lưu ý: Studio có thể hủy lịch bất cứ lúc nào theo tình trạng chuyên viên.');
         navigate('/my-bookings');
       } else {
-        // 3. Tạo URL thanh toán VNPay
+        // 3. Tạo URL thanh toán VNPay và chuyển hướng khách
         const vnpayRes = await bookingService.createVNPayUrl(bookingRes.id);
         setVnpayData(vnpayRes);
-        setShowVNPayModal(true);
-        toast.success('✨ Đơn đặt lịch đã được khởi tạo! Vui lòng hoàn tất thanh toán cọc qua VNPay.');
+        if (vnpayRes?.paymentUrl) {
+          sessionStorage.removeItem('makeup_booking_draft');
+          toast.success('✨ Đơn đặt lịch đã khởi tạo! Đang chuyển hướng sang cổng thanh toán VNPay...');
+          window.location.href = vnpayRes.paymentUrl;
+          return;
+        } else {
+          setShowVNPayModal(true);
+          toast.success('✨ Đơn đặt lịch đã được khởi tạo! Vui lòng hoàn tất thanh toán cọc qua VNPay.');
+        }
       }
     } catch (err) {
       setError(err.message || 'Không thể tạo đơn đặt lịch');
@@ -622,6 +923,7 @@ const BookingPage = () => {
     setVnpayProcessing(true);
     try {
       await bookingService.confirmVNPay(createdBooking.id, vnpayData.transactionCode);
+      sessionStorage.removeItem('makeup_booking_draft');
       setShowVNPayModal(false);
       toast.success('🎉 Thanh toán cọc thành công! Lịch hẹn của bạn đã được xác nhận.');
       navigate('/my-bookings');
@@ -660,16 +962,46 @@ const BookingPage = () => {
           </p>
         </div>
 
+        {/* Banner cảnh báo khi tài khoản là Admin hoặc Artist */}
+        {(isAdmin || isArtist) && (
+          <div className="max-w-4xl mx-auto p-4 sm:p-5 rounded-3xl bg-amber-50 border-2 border-amber-300 text-amber-900 shadow-md flex items-start gap-4">
+            <div className="p-2.5 rounded-2xl bg-amber-100 text-amber-700 shrink-0 mt-0.5">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="font-bold text-sm sm:text-base text-amber-950">
+                  Tài Khoản Không Được Phép Đặt Lịch
+                </h4>
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-200/90 text-amber-950 font-sans">
+                  {isAdmin ? 'Quản Trị Viên (Admin)' : 'Nghệ Sĩ Makeup (Artist)'}
+                </span>
+              </div>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Hệ thống chỉ cho phép tài khoản <strong>Khách Hàng (Customer)</strong> thực hiện đặt lịch dịch vụ. Để kiểm tra trải nghiệm đặt lịch, vui lòng đăng xuất tài khoản hiện tại và đăng nhập bằng tài khoản Khách hàng.
+              </p>
+              <div className="pt-2 flex flex-wrap items-center gap-3">
+                <Link
+                  to={isAdmin ? '/admin' : '/artist'}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all shadow-sm"
+                >
+                  <span>Chuyển đến {isAdmin ? 'Trang Quản Trị Admin' : 'Khu Vực Nghệ Sĩ'}</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Stepper Progress Bar */}
         <div className="grid grid-cols-5 gap-1.5 sm:gap-3 max-w-4xl mx-auto">
           {[
-            { step: 1, label: 'Dịch Vụ & Người', icon: Layers },
+            { step: 1, label: 'Dịch Vụ', icon: Layers },
             { step: 2, label: 'Địa Điểm', icon: MapPin },
-            { step: 3, label: 'Thời Gian & Thợ', icon: Clock },
-            { step: 4, label: 'Layout & Ảnh', icon: Palette },
-            { step: 5, label: 'Xác Nhận & Cọc', icon: CreditCard },
+            { step: 3, label: 'Thời Gian', icon: Clock },
+            { step: 4, label: 'Layout', icon: Palette },
+            { step: 5, label: 'Xác Nhận & Thanh Toán', icon: CreditCard },
           ].map((item) => {
-            const Icon = item.icon;
             const isCompleted = currentStep > item.step;
             const isCurrent = currentStep === item.step;
             return (
@@ -710,7 +1042,7 @@ const BookingPage = () => {
                   <div>
                     <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                       <span className="w-7 h-7 rounded-xl bg-rose-600 text-white text-xs flex items-center justify-center font-bold">1</span>
-                      <span>Bước 1: Chọn Dịch Vụ & Số Lượng Người</span>
+                      <span>Bước 1: Dịch Vụ</span>
                     </h3>
                     <p className="text-xs text-slate-500 mt-1">
                       Chọn gói makeup mong muốn và số lượng người phục vụ trong nhóm
@@ -790,7 +1122,7 @@ const BookingPage = () => {
 
                         {/* Price & Quantity Controls */}
                         <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
-                          <span className="text-sm font-bold text-rose-600 font-serif">
+                          <span className="text-sm font-bold text-rose-600 font-sans">
                             {formatCurrency(service.price)}
                           </span>
 
@@ -851,7 +1183,7 @@ const BookingPage = () => {
                     onClick={handleNextStep1}
                     className="px-6 py-3 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white text-xs sm:text-sm font-semibold shadow-md shadow-rose-500/25 transition-all flex items-center gap-2"
                   >
-                    <span>Tiếp Tục: Chọn Địa Điểm</span>
+                    <span>Tiếp Tục: Địa Điểm (Bước 2)</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -866,7 +1198,7 @@ const BookingPage = () => {
                 <div className="pb-4 border-b border-slate-100">
                   <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                     <span className="w-7 h-7 rounded-xl bg-rose-600 text-white text-xs flex items-center justify-center font-bold">2</span>
-                    <span>Bước 2: Chọn Địa Điểm Thực Hiện</span>
+                    <span>Bước 2: Địa Điểm</span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
                     Bạn muốn đến Studio của chúng tôi hay chuyên viên đến tận nơi phục vụ?
@@ -974,7 +1306,7 @@ const BookingPage = () => {
                         : 'bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 shadow-rose-500/25'
                       }`}
                   >
-                    <span>{isOverMaxDistance ? 'Không nhận đơn quá 200km' : 'Tiếp Tục: Chọn Thời Gian & Xếp Thợ'}</span>
+                    <span>{isOverMaxDistance ? 'Không nhận đơn quá 200km' : 'Tiếp Tục: Thời Gian (Bước 3)'}</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -990,7 +1322,7 @@ const BookingPage = () => {
                   <div className="flex items-center justify-between">
                     <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                       <span className="w-7 h-7 rounded-xl bg-rose-600 text-white text-xs flex items-center justify-center font-bold">3</span>
-                      <span>Bước 3: Thời Gian & Gợi Ý Điều Phối Chuyên Viên</span>
+                      <span>Bước 3: Thời Gian</span>
                     </h3>
                     <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-100 flex items-center gap-1">
                       <Sparkles className="w-3.5 h-3.5 text-rose-600" />
@@ -1273,11 +1605,11 @@ const BookingPage = () => {
                                   )}
                                 </h4>
                                 <div className="flex items-baseline gap-1.5 mt-0.5">
-                                  <span className="text-base font-extrabold text-rose-600 font-serif">
+                                  <span className="text-base font-extrabold text-rose-600 font-sans">
                                     {formatCurrency(opt.totalPrice)}
                                   </span>
                                   {opt.planCode === 'SAVING' && totalPeople >= 2 && opt.servicesPrice && Number(opt.servicesPrice) > Number(opt.totalPrice) && (
-                                    <span className="text-xs text-slate-400 line-through font-serif">
+                                    <span className="text-xs text-slate-400 line-through font-sans">
                                       {formatCurrency(opt.servicesPrice)}
                                     </span>
                                   )}
@@ -1319,7 +1651,7 @@ const BookingPage = () => {
                     onClick={handleNextStep3}
                     className="px-6 py-3 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white text-xs sm:text-sm font-semibold shadow-md shadow-rose-500/25 transition-all flex items-center gap-2"
                   >
-                    <span>Tiếp Tục: Chọn Layout & Tải Ảnh (Bước 4)</span>
+                    <span>Tiếp Tục: Layout (Bước 4)</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -1335,7 +1667,7 @@ const BookingPage = () => {
                   <div>
                     <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                       <span className="w-7 h-7 rounded-xl bg-rose-600 text-white text-xs flex items-center justify-center font-bold">4</span>
-                      <span>Bước 4: Chọn Layout & Tải Ảnh Khuôn Mặt</span>
+                      <span>Bước 4: Layout</span>
                     </h3>
                     <p className="text-xs text-slate-500 mt-1">
                       Chọn phong cách trang điểm mong muốn và tải ảnh chân dung để artist tư vấn độ phù hợp
@@ -1356,8 +1688,44 @@ const BookingPage = () => {
                     <span className="text-[11px] text-slate-400">Chọn 1 layout phù hợp với phong cách của bạn</span>
                   </div>
 
+                  {/* Tham khảo tác phẩm từ Bộ Sưu Tập nếu có */}
+                  {portfolioRef && (
+                    <div className="p-3.5 rounded-2xl bg-rose-50/90 border border-rose-200 flex items-center justify-between gap-3 shadow-xs animate-in fade-in">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {portfolioRef.imageUrl ? (
+                          <img
+                            src={portfolioRef.imageUrl}
+                            alt={portfolioRef.title}
+                            className="w-12 h-12 rounded-xl object-cover border border-rose-200 shadow-2xs shrink-0"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                            <Sparkles className="w-6 h-6 text-rose-500" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-bold text-rose-700 bg-white/90 px-2 py-0.5 rounded-md uppercase tracking-wider border border-rose-200">
+                            Ảnh mẫu tham khảo từ Bộ Sưu Tập
+                          </span>
+                          <h5 className="font-bold text-xs text-slate-900 truncate mt-1">{portfolioRef.title}</h5>
+                          {portfolioRef.artistName && (
+                            <p className="text-[11px] text-slate-500 truncate">Artist: {portfolioRef.artistName}</p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearPortfolioRef}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white/80 transition-colors cursor-pointer"
+                        title="Gỡ ảnh mẫu tham khảo"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                    {LAYOUT_OPTIONS.map((layout) => {
+                    {layouts.map((layout) => {
                       const isSelected = selectedLayout === layout.name;
                       return (
                         <div
@@ -1369,30 +1737,33 @@ const BookingPage = () => {
                               : 'border-slate-200 bg-white hover:border-rose-200 hover:bg-slate-50/50'
                           }`}
                         >
-                          <div className="space-y-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${layout.badgeClass}`}>
-                                  {layout.tag}
-                                </span>
-                                <h4 className="font-bold text-slate-900 text-sm mt-1.5 flex items-center gap-1.5">
-                                  <span>{layout.name}</span>
-                                </h4>
-                              </div>
-                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
-                                isSelected ? 'border-rose-600 bg-rose-600 text-white' : 'border-slate-300 bg-white'
-                              }`}>
-                                {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                              </div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-md border ${layout.badgeClass}`}>
+                                {layout.tag}
+                              </span>
+                              <h4 className="font-bold text-slate-900 text-sm mt-1.5 flex items-center gap-1.5">
+                                <span>{layout.name}</span>
+                              </h4>
                             </div>
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                              {layout.desc}
-                            </p>
+                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                              isSelected ? 'border-rose-600 bg-rose-600 text-white' : 'border-slate-300 bg-white'
+                            }`}>
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
                           </div>
 
-                          <div className="mt-3 pt-2.5 border-t border-slate-100/80 text-[11px] text-slate-500 flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 text-rose-500 shrink-0" />
-                            <span className="truncate"><strong>Hợp với:</strong> {layout.suitableFor}</span>
+                          <div className="mt-3 pt-2.5 border-t border-slate-100/80">
+                            <button
+                              type="button"
+                              onClick={(e) => handleViewCollectionLayout(layout, e)}
+                              className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 hover:text-rose-800 border border-rose-200/80 transition-all shadow-2xs group cursor-pointer"
+                              title={`Xem các mẫu tác phẩm thực tế của ${layout.name} trong Bộ Sưu Tập`}
+                            >
+                              <Eye className="w-3.5 h-3.5 text-rose-500 group-hover:scale-110 transition-transform" />
+                              <span>Xem bộ sưu tập</span>
+                              <ArrowRight className="w-3 h-3 text-rose-400 group-hover:translate-x-0.5 transition-transform" />
+                            </button>
                           </div>
                         </div>
                       );
@@ -1414,6 +1785,20 @@ const BookingPage = () => {
                       />
                     </div>
                   )}
+
+                  {/* Nút chuyển đến Giới Thiệu Về Các Layout ở Trang Chủ */}
+                  <div className="pt-2 flex items-center justify-start">
+                    <button
+                      type="button"
+                      id="btn-goto-layouts-intro"
+                      onClick={handleGoToLayoutsIntro}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-50 via-pink-50 to-amber-50 hover:from-rose-100 hover:to-pink-100 text-rose-700 text-xs font-bold border border-rose-200/90 shadow-2xs hover:shadow-xs transition-all group cursor-pointer"
+                    >
+                      <Sparkles className="w-4 h-4 text-rose-600 group-hover:rotate-12 transition-transform" />
+                      <span>Giới thiệu chi tiết về các layout</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-rose-500 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* 2. Tải ảnh chân dung / avatar (Tùy chọn nhưng khuyên dùng) */}
@@ -1542,7 +1927,7 @@ const BookingPage = () => {
                     onClick={handleNextStep4}
                     className="px-6 py-3 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white text-xs sm:text-sm font-semibold shadow-md shadow-rose-500/25 transition-all flex items-center gap-2"
                   >
-                    <span>Tiếp Tục: Thanh Toán & Đặt Cọc (Bước 5)</span>
+                    <span>Tiếp Tục: Xác Nhận & Thanh Toán (Bước 5)</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -1557,7 +1942,7 @@ const BookingPage = () => {
                 <div className="pb-4 border-b border-slate-100">
                   <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                     <span className="w-7 h-7 rounded-xl bg-rose-600 text-white text-xs flex items-center justify-center font-bold">5</span>
-                    <span>Bước 5: Tóm Tắt Chi Phí & Cổng Thanh Toán VNPay</span>
+                    <span>Bước 5: Xác Nhận & Thanh Toán</span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
                     Kiểm tra lại toàn bộ chi tiết và đặt cọc 30% để xác nhận giữ chỗ chuyên gia
@@ -1624,7 +2009,7 @@ const BookingPage = () => {
                     <div className="space-y-1.5">
                       <p className="text-slate-700">
                         <strong>Hình thức:</strong>{' '}
-                        {locationType === 'HOME' ? 'Tận Nơi (Tại Nhà)' : 'Tại Studio MNM'}
+                        {locationType === 'HOME' ? 'Tận Nơi (Tại Nhà)' : 'Tại Studio DungDorys'}
                       </p>
                       <p className="text-slate-700">
                         <strong>Địa chỉ:</strong>{' '}
@@ -1638,11 +2023,71 @@ const BookingPage = () => {
                           {Number(distanceKm) > 200 ? (
                             <span className="text-rose-600 font-bold">Vượt quá 200km (Không nhận đơn)</span>
                           ) : (
-                            <span>Phụ phí: {calculatedTravelFee === 0 ? 'Miễn phí (0 ₫)' : formatCurrency(calculatedTravelFee)}</span>
+                            <span>Phụ phí: {calculatedTravelFee === 0 ? 'Miễn phí (0 đ)' : formatCurrency(calculatedTravelFee)}</span>
                           )}
                           )
                         </p>
                       )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Xác Nhận Email & Số Điện Thoại Nhận Đơn */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-rose-50/60 via-white to-pink-50/40 border border-rose-200/90 shadow-xs space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-800 block">
+                          Xác Nhận Email & Số Điện Thoại Nhận Đơn
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Hệ thống sẽ gửi hóa đơn xác nhận tự động qua Email và chuyên viên liên hệ qua SĐT
+                        </span>
+                      </div>
+                    </div>
+                    <span className="hidden sm:inline-flex text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                      ✓ Đã bảo mật
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                    {/* Input Email */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Email nhận xác nhận & hóa đơn <span className="text-rose-500">*</span></span>
+                      </label>
+                      <input
+                        type="email"
+                        value={contactEmail}
+                        onChange={(e) => setContactEmail(e.target.value)}
+                        placeholder="VD: email_cua_ban@gmail.com"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all"
+                      />
+                      <p className="text-[10px] text-slate-500">
+                        ✉️ Hóa đơn điện tử và mã lịch hẹn sẽ được gửi tự động đến email này sau khi cọc thành công.
+                      </p>
+                    </div>
+
+                    {/* Input Số điện thoại */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Số điện thoại liên hệ (SĐT) <span className="text-rose-500">*</span></span>
+                      </label>
+                      <input
+                        type="tel"
+                        value={contactPhone}
+                        onChange={(e) => setContactPhone(e.target.value)}
+                        placeholder="VD: 0912345678"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all"
+                      />
+                      <p className="text-[10px] text-slate-500">
+                        📞 Chuyên viên makeup sẽ gọi điện xác nhận trước giờ hẹn 30 phút.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1662,11 +2107,214 @@ const BookingPage = () => {
                             <span className="text-rose-600 font-bold ml-1.5">x{q} người</span>
                             <span className="text-slate-400 ml-2">({s.duration} phút/người)</span>
                           </div>
-                          <span className="font-bold text-slate-800 font-serif">{formatCurrency(s.price * q)}</span>
+                          <span className="font-bold text-slate-800 font-sans">{formatCurrency(s.price * q)}</span>
                         </div>
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Mã Giảm Giá / Voucher Ưu Đãi */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-white border border-rose-200/90 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-rose-100 text-rose-600">
+                        <Tag className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                        Mã Giảm Giá / Voucher Ưu Đãi
+                      </span>
+                    </div>
+                    {availableVouchers.length > 0 && (
+                      <span className="text-[11px] text-rose-600 font-semibold bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                        {availableVouchers.length} mã khả dụng
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Input form */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={voucherCodeInput}
+                      onChange={(e) => {
+                        setVoucherCodeInput(e.target.value.toUpperCase());
+                        setVoucherMsg(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleApplyVoucher(voucherCodeInput);
+                        }
+                      }}
+                      placeholder="Nhập mã voucher (VD: WELCOME10, BEAUTY50K)..."
+                      className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                    />
+                    <button
+                      type="button"
+                      disabled={!voucherCodeInput.trim() || isCheckingVoucher}
+                      onClick={() => handleApplyVoucher(voucherCodeInput)}
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold transition-all cursor-pointer shrink-0"
+                    >
+                      {isCheckingVoucher ? 'Đang kiểm tra...' : 'Áp Dụng'}
+                    </button>
+                  </div>
+
+                  {/* Thông báo kết quả áp dụng voucher */}
+                  {voucherMsg && (
+                    <div className={`p-2.5 rounded-xl text-xs flex items-center justify-between ${
+                      voucherMsg.type === 'success'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}>
+                      <span className="font-medium">{voucherMsg.text}</span>
+                      {appliedVoucher && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveVoucher}
+                          className="text-rose-600 hover:text-rose-800 text-[11px] font-bold cursor-pointer underline ml-2 shrink-0"
+                        >
+                          Gỡ bỏ
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Thông tin Hạng Thành Viên của Khách Hàng (Loyalty Tier) */}
+                  {userTierInfo && (
+                    <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-pink-500/10 border border-amber-200/80 flex items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-rose-500 text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
+                          👑
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider">Hạng Thành Viên:</span>
+                            <span className="font-bold text-xs text-rose-700 bg-white/90 px-2 py-0.5 rounded-md border border-amber-200/60 shadow-2xs">
+                              {userTierInfo.tierName}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 mt-0.5">
+                            {userTierInfo.completedBookings > 0 
+                              ? `Đã hoàn thành ${userTierInfo.completedBookings} đơn • Chi tiêu: ${formatCurrency(userTierInfo.totalSpent)}` 
+                              : 'Khách hàng mới trải nghiệm (Nhận trọn vẹn ưu đãi chào mừng)'}
+                          </p>
+                        </div>
+                      </div>
+                      {userTierInfo.nextTierName && (
+                        <div className="hidden sm:block text-right shrink-0">
+                          <span className="text-[10px] text-slate-500 block">Tiến độ lên {userTierInfo.nextTierName}</span>
+                          <span className="text-xs font-bold text-amber-600">{userTierInfo.progressPercent}%</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 1. Ví Voucher Cá Nhân (Đặc quyền riêng tặng vào tài khoản) */}
+                  {personalVouchers.length > 0 && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-purple-900">
+                        <Gift className="w-4 h-4 text-purple-600" />
+                        <span>🎁 Ví Voucher Cá Nhân Dành Riêng Cho Bạn:</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {personalVouchers.map((v) => {
+                          const isCurrent = appliedVoucher?.code === v.code;
+                          return (
+                            <button
+                              key={`personal_${v.id}`}
+                              type="button"
+                              onClick={() => handleApplyVoucher(v.code)}
+                              className={`p-3 rounded-2xl text-left border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                                isCurrent
+                                  ? 'border-emerald-500 bg-emerald-50/80 ring-2 ring-emerald-500/20'
+                                  : 'border-purple-200 bg-gradient-to-br from-purple-50/60 to-pink-50/40 hover:border-purple-400 hover:shadow-xs'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <span className="font-mono font-bold text-xs text-purple-700 bg-purple-100/90 px-2 py-0.5 rounded-lg border border-purple-200">
+                                    {v.code}
+                                  </span>
+                                  <span className="text-[10px] font-bold text-purple-700 bg-white px-2 py-0.5 rounded-full border border-purple-200">
+                                    Quà tặng riêng
+                                  </span>
+                                </div>
+                                <h5 className="font-bold text-xs text-slate-900 mt-1.5 truncate">{v.name}</h5>
+                                <p className="text-[11px] text-purple-800 font-semibold mt-0.5">
+                                  {v.discountType === 'PERCENTAGE' ? `Giảm ${v.discountValue}% (tối đa ${formatCurrency(v.maxDiscountAmount || 0)})` : `Giảm ngay ${formatCurrency(v.discountValue)}`}
+                                </p>
+                                {v.note && (
+                                  <p className="text-[10px] text-slate-500 italic mt-1 line-clamp-1">"{v.note}"</p>
+                                )}
+                              </div>
+                              <div className="pt-2 border-t border-purple-100 flex items-center justify-between text-[11px]">
+                                <span className="text-slate-400 text-[10px]">Đơn từ: {formatCurrency(v.minOrderAmount)}</span>
+                                <span className={`font-bold ${isCurrent ? 'text-emerald-600' : 'text-purple-700'}`}>
+                                  {isCurrent ? '✓ Đang dùng' : 'Chọn dùng ngay ➔'}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. Danh Sách Mã Ưu Đãi Hệ Thống (Có kiểm tra điều kiện cá nhân hóa) */}
+                  {availableVouchers.length > 0 && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <p className="text-[11px] font-semibold text-slate-500">Mã ưu đãi toàn hệ thống:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {availableVouchers.map((v) => {
+                          const isCurrent = appliedVoucher?.code === v.code;
+                          const canUse = v.canApply !== false;
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              disabled={!canUse}
+                              onClick={() => handleApplyVoucher(v.code)}
+                              className={`p-2.5 rounded-xl text-left border transition-all flex items-center justify-between gap-2 ${
+                                isCurrent
+                                  ? 'border-emerald-500 bg-emerald-50/70 ring-1 ring-emerald-500/20 cursor-pointer'
+                                  : canUse
+                                    ? 'border-slate-200 hover:border-rose-300 hover:bg-rose-50/40 bg-slate-50/70 cursor-pointer'
+                                    : 'border-slate-200 bg-slate-100/70 opacity-60 cursor-not-allowed'
+                              }`}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`font-mono font-bold text-xs px-1.5 py-0.5 rounded ${
+                                    canUse ? 'text-rose-600 bg-rose-100/80' : 'text-slate-500 bg-slate-200'
+                                  }`}>
+                                    {v.code}
+                                  </span>
+                                  <span className="text-[11px] font-semibold text-slate-800 truncate">
+                                    {v.discountType === 'PERCENTAGE' ? `Giảm ${v.discountValue}%` : `Giảm ${formatCurrency(v.discountValue)}`}
+                                  </span>
+                                  {v.targetTier && v.targetTier !== 'ALL' && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                                      {v.targetTier === 'NEW' ? 'Khách Mới' : v.targetTier}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-500 truncate mt-0.5">{v.name}</p>
+                                {!canUse && v.reasonIfNotApplicable && (
+                                  <p className="text-[10px] text-amber-700 font-medium truncate mt-0.5">⚠️ {v.reasonIfNotApplicable}</p>
+                                )}
+                              </div>
+                              <span className={`text-[10px] font-bold shrink-0 ${
+                                isCurrent ? 'text-emerald-600' : canUse ? 'text-rose-600' : 'text-slate-400'
+                              }`}>
+                                {isCurrent ? '✓ Đang dùng' : canUse ? 'Chọn dùng' : 'Chưa đủ ĐK'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Cost Calculation Summary (Model 2 Breakdown) */}
@@ -1681,6 +2329,14 @@ const BookingPage = () => {
                     <div className="flex justify-between text-xs text-emerald-600 font-semibold">
                       <span>Ưu đãi Gói Tiết Kiệm (-15%):</span>
                       <span>-{formatCurrency(discountAmount)}</span>
+                    </div>
+                  )}
+
+                  {/* Chiết khấu Voucher (nếu có) */}
+                  {appliedVoucher && currentVoucherDiscount > 0 && (
+                    <div className="flex justify-between text-xs text-emerald-600 font-semibold">
+                      <span>Voucher giảm giá ({appliedVoucher.code}):</span>
+                      <span>-{formatCurrency(currentVoucherDiscount)}</span>
                     </div>
                   )}
 
@@ -1709,7 +2365,7 @@ const BookingPage = () => {
 
                   <div className="pt-2 border-t border-rose-200 flex justify-between text-base font-bold text-slate-900">
                     <span>Tổng chi phí đơn:</span>
-                    <span className="text-lg font-serif">{formatCurrency(totalPrice)}</span>
+                    <span className="text-lg font-sans">{formatCurrency(totalPrice)}</span>
                   </div>
 
                   {/* Cọc hoặc toàn bộ tùy hình thức thanh toán */}
@@ -1719,7 +2375,7 @@ const BookingPage = () => {
                         <span className="text-xs font-bold text-rose-700 block">Tiền cọc giữ chỗ (30%):</span>
                         <span className="text-[11px] text-slate-500">70% còn lại ({formatCurrency(totalPrice - depositAmount)}) thanh toán sau khi hoàn tất dịch vụ</span>
                       </div>
-                      <span className="text-lg font-bold text-rose-600 font-serif">
+                      <span className="text-lg font-bold text-rose-600 font-sans">
                         {formatCurrency(depositAmount)}
                       </span>
                     </div>
@@ -1729,7 +2385,7 @@ const BookingPage = () => {
                         <span className="text-xs font-bold text-amber-800 block">Thanh toán tại quầy Studio (100%):</span>
                         <span className="text-[11px] text-slate-500">Không cần đặt cọc trước, thanh toán trực tiếp khi đến làm đẹp</span>
                       </div>
-                      <span className="text-lg font-bold text-amber-700 font-serif">
+                      <span className="text-lg font-bold text-amber-700 font-sans">
                         {formatCurrency(totalPrice)}
                       </span>
                     </div>
@@ -1838,7 +2494,7 @@ const BookingPage = () => {
                       <div className="mt-3 space-y-1 text-[11px] text-slate-600 border-t border-slate-100 pt-2.5">
                         {locationType === 'STUDIO' ? (
                           <>
-                            <p>• Cọc trước: <strong className="text-emerald-600">0 ₫ (Không cần cọc)</strong></p>
+                            <p>• Cọc trước: <strong className="text-emerald-600">0 đ (Không cần cọc)</strong></p>
                             <p>• Thanh toán toàn bộ <strong className="text-slate-900 font-semibold">{formatCurrency(totalPrice)}</strong> tại quầy lễ tân studio bằng tiền mặt hoặc thẻ.</p>
                             <p className="text-amber-700 font-medium flex items-center gap-1 pt-0.5">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -1859,7 +2515,7 @@ const BookingPage = () => {
                     <div className="p-4 rounded-2xl bg-amber-50/90 border-2 border-amber-300 text-amber-900 space-y-2 animate-in fade-in duration-200">
                       <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
                         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>LƯU Ý QUAN TRỌNG TỪ MNM MAKEUP STUDIO:</span>
+                        <span>LƯU Ý QUAN TRỌNG TỪ DUNGDORYS MAKE UP STUDIO:</span>
                       </div>
                       <p className="text-[12px] leading-relaxed text-amber-800 pl-6">
                         Đối với hình thức thanh toán tại Studio (không cọc giữ chỗ), <strong className="font-bold underline text-amber-900">Studio có thể chủ động hủy lịch bất cứ lúc nào theo tình trạng chuyên viên</strong> (như chuyên viên có việc đột xuất, studio quá tải hoặc ưu tiên phục vụ khách hàng đã đặt cọc trước).
@@ -1903,11 +2559,16 @@ const BookingPage = () => {
                       type="button"
                       id="btn-proceed-vnpay"
                       onClick={handleProceedBooking}
-                      disabled={submitting}
-                      className="px-8 py-3.5 rounded-full bg-gradient-to-r from-rose-600 via-pink-600 to-rose-700 hover:opacity-95 text-white text-xs sm:text-sm font-bold shadow-lg shadow-rose-600/30 transition-all flex items-center gap-2 disabled:opacity-50"
+                      disabled={submitting || isAdmin || isArtist}
+                      className="px-8 py-3.5 rounded-full bg-gradient-to-r from-rose-600 via-pink-600 to-rose-700 hover:opacity-95 text-white text-xs sm:text-sm font-bold shadow-lg shadow-rose-600/30 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {submitting ? (
                         <span>Đang khởi tạo đơn & cổng VNPay...</span>
+                      ) : (isAdmin || isArtist) ? (
+                        <>
+                          <AlertTriangle className="w-4 h-4 text-amber-300" />
+                          <span>Tài Khoản Admin / Artist Không Thể Đặt Lịch</span>
+                        </>
                       ) : (
                         <>
                           <CreditCard className="w-4 h-4" />
@@ -1920,11 +2581,16 @@ const BookingPage = () => {
                       type="button"
                       id="btn-proceed-studio"
                       onClick={() => setShowStudioConfirmModal(true)}
-                      disabled={submitting}
-                      className="px-8 py-3.5 rounded-full bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:opacity-95 text-white text-xs sm:text-sm font-bold shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2 disabled:opacity-50"
+                      disabled={submitting || isAdmin || isArtist}
+                      className="px-8 py-3.5 rounded-full bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:opacity-95 text-white text-xs sm:text-sm font-bold shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {submitting ? (
                         <span>Đang xử lý đặt lịch...</span>
+                      ) : (isAdmin || isArtist) ? (
+                        <>
+                          <AlertTriangle className="w-4 h-4 text-amber-300" />
+                          <span>Tài Khoản Admin / Artist Không Thể Đặt Lịch</span>
+                        </>
                       ) : (
                         <>
                           <Building2 className="w-4 h-4" />
@@ -1944,7 +2610,7 @@ const BookingPage = () => {
               <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3 flex items-center justify-between">
                 <span>Đơn Đặt Lịch Của Bạn</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 font-sans font-semibold">
-                  Bước {currentStep}/4
+                  Bước {currentStep}/5
                 </span>
               </h3>
 
@@ -1953,7 +2619,7 @@ const BookingPage = () => {
                 {/* Bước 1: Dịch vụ & Số người */}
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold uppercase tracking-wider">
-                    <span>1. Dịch vụ & Khách</span>
+                    <span>1. Dịch Vụ</span>
                     <span className="text-emerald-600 font-normal lowercase bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
                       Đã chọn ({totalPeople} người)
                     </span>
@@ -1993,7 +2659,7 @@ const BookingPage = () => {
                 {/* Bước 2: Địa điểm */}
                 <div className="space-y-1.5 pt-3">
                   <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold uppercase tracking-wider">
-                    <span>2. Địa điểm</span>
+                    <span>2. Địa Điểm</span>
                     {currentStep >= 2 ? (
                       <span className="text-emerald-600 font-normal lowercase bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
                         {currentStep === 2 ? 'Đang chọn' : 'Đã chọn'}
@@ -2036,7 +2702,7 @@ const BookingPage = () => {
                 {/* Bước 3: Thời gian & Xếp thợ */}
                 <div className="space-y-1.5 pt-3">
                   <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold uppercase tracking-wider">
-                    <span>3. Thời gian & Thợ</span>
+                    <span>3. Thời Gian</span>
                     {currentStep >= 3 ? (
                       <span className="text-emerald-600 font-normal lowercase bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
                         {currentStep === 3 ? 'Đang chọn' : 'Đã chọn'}
@@ -2082,7 +2748,7 @@ const BookingPage = () => {
                 {/* Bước 4: Layout & Ghi Chú / Ảnh */}
                 <div className="space-y-1.5 pt-3 border-t border-slate-100">
                   <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold uppercase tracking-wider">
-                    <span>4. Layout & Ảnh Chân Dung</span>
+                    <span>4. Layout</span>
                     {currentStep >= 4 ? (
                       <span className="text-emerald-600 font-normal lowercase bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
                         {currentStep === 4 ? 'Đang chọn' : 'Đã chọn'}
@@ -2139,7 +2805,7 @@ const BookingPage = () => {
                   <div className="flex justify-between text-slate-600">
                     <span>Phụ phí di chuyển ({distanceKm} km):</span>
                     <span className={calculatedTravelFee === 0 ? "font-semibold text-emerald-600" : "font-medium text-slate-900"}>
-                      {calculatedTravelFee === 0 ? '0 ₫ (Miễn phí <10km)' : `+${formatCurrency(calculatedTravelFee)}`}
+                      {calculatedTravelFee === 0 ? '0 đ (Miễn phí <10km)' : `+${formatCurrency(calculatedTravelFee)}`}
                     </span>
                   </div>
                 )}
@@ -2151,6 +2817,12 @@ const BookingPage = () => {
                       <div className="flex justify-between text-xs text-emerald-600 font-semibold">
                         <span>Ưu đãi Tiết Kiệm (-15%):</span>
                         <span>-{formatCurrency(discountAmount)}</span>
+                      </div>
+                    )}
+                    {appliedVoucher && currentVoucherDiscount > 0 && (
+                      <div className="flex justify-between text-xs text-emerald-600 font-semibold">
+                        <span>Voucher ({appliedVoucher.code}):</span>
+                        <span>-{formatCurrency(currentVoucherDiscount)}</span>
                       </div>
                     )}
                     {rushFee > 0 && (
@@ -2170,7 +2842,7 @@ const BookingPage = () => {
 
                 <div className="flex justify-between text-sm font-bold text-slate-900 pt-2 border-t border-slate-100">
                   <span>{currentStep === 4 ? (paymentMethod === 'AT_STUDIO' ? 'Tổng thanh toán tại Studio:' : 'Tổng chi phí đơn:') : 'Tổng tạm tính:'}</span>
-                  <span className="text-base text-rose-600 font-serif">{formatCurrency(displayedTotalPrice)}</span>
+                  <span className="text-base text-rose-600 font-sans">{formatCurrency(displayedTotalPrice)}</span>
                 </div>
                 {currentStep === 4 && paymentMethod === 'AT_STUDIO' ? (
                   <div className="space-y-1.5">
@@ -2226,7 +2898,7 @@ const BookingPage = () => {
                 </p>
                 <div className="pt-2 border-t border-amber-200/80 flex justify-between items-center text-xs">
                   <span className="font-medium text-slate-700">Thanh toán khi đến làm:</span>
-                  <span className="font-bold text-rose-600 text-sm font-serif">{formatCurrency(totalPrice)}</span>
+                  <span className="font-bold text-rose-600 text-sm font-sans">{formatCurrency(totalPrice)}</span>
                 </div>
               </div>
 
@@ -2285,7 +2957,7 @@ const BookingPage = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Số tiền cọc cần thanh toán:</span>
-                  <span className="text-base font-bold text-rose-600 font-serif">
+                  <span className="text-base font-bold text-rose-600 font-sans">
                     {formatCurrency(vnpayData.amount)}
                   </span>
                 </div>
@@ -2308,31 +2980,97 @@ const BookingPage = () => {
               </div>
 
               {/* Modal Buttons */}
+              <div className="space-y-2 pt-2">
+                {vnpayData?.paymentUrl && (
+                  <a
+                    href={vnpayData.paymentUrl}
+                    className="w-full py-3 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-2 text-center"
+                  >
+                    <span>Chuyển Sang Cổng VNPay Để Thanh Toán Ngay</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowVNPayModal(false);
+                      setShowPaymentConfirmModal(true);
+                    }}
+                    className="px-4 py-2.5 rounded-full border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all text-center"
+                  >
+                    Hủy / Để Sau
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmVNPayPayment}
+                    disabled={vnpayProcessing}
+                    className="px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {vnpayProcessing ? (
+                      <span>Đang xử lý...</span>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Xác Nhận Đã Cọc</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* PAYMENT RETRY OR HOLD 15 MINUTES CONFIRMATION MODAL */}
+        {/* ======================================================== */}
+        {showPaymentConfirmModal && createdBooking && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full p-6 sm:p-7 space-y-5">
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Thanh Toán Cọc Chưa Hoàn Tất
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Đơn đặt lịch #{createdBooking.id} hiện đang ở trạng thái chờ thanh toán cọc.
+                </p>
+              </div>
+
+              <div className="bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 text-xs text-amber-800 space-y-1.5">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Quy định giữ lịch: Tối đa 15 phút</span>
+                </p>
+                <p className="text-slate-600 leading-relaxed">
+                  Nếu bạn chọn <strong>Để sau</strong>, hệ thống sẽ tạm giữ lịch trong <strong>15 phút</strong>. Sau 15 phút nếu chưa thanh toán, đơn sẽ <strong>tự động bị hủy</strong> để giải phóng lịch cho khách hàng khác.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => {
-                    setShowVNPayModal(false);
+                    setShowPaymentConfirmModal(false);
+                    toast.info('Lịch hẹn của bạn được tạm giữ trong 15 phút. Vui lòng thanh toán cọc tại "Lịch hẹn của tôi"!');
                     navigate('/my-bookings');
                   }}
-                  className="px-4 py-2.5 rounded-full border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all"
+                  className="px-4 py-2.5 rounded-full border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all text-center"
                 >
-                  Hủy & Xem Lịch Đặt
+                  Để Sau (Giữ 15 Phút)
                 </button>
                 <button
                   type="button"
-                  onClick={handleConfirmVNPayPayment}
-                  disabled={vnpayProcessing}
-                  className="px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  onClick={() => {
+                    setShowPaymentConfirmModal(false);
+                    setShowVNPayModal(true);
+                  }}
+                  className="px-4 py-2.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/25 transition-all text-center"
                 >
-                  {vnpayProcessing ? (
-                    <span>Đang xử lý...</span>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4" />
-                      <span>Xác Nhận Đã Thanh Toán</span>
-                    </>
-                  )}
+                  Thanh Toán Lại Ngay
                 </button>
               </div>
             </div>

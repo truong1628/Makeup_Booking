@@ -41,4 +41,20 @@ public class BookingItem extends BaseEntity {
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
+
+    @Column(name = "cancel_requested", nullable = false)
+    @Builder.Default
+    private Boolean cancelRequested = false;
+
+    @Column(name = "cancel_reason", length = 500)
+    private String cancelReason;
+
+    @Column(name = "cancel_requested_at")
+    private java.time.LocalDateTime cancelRequestedAt;
+
+    @Column(name = "cancel_status", length = 30)
+    private String cancelStatus;
+
+    @Column(name = "original_artist_id")
+    private Long originalArtistId;
 }

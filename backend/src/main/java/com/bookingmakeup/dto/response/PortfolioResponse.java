@@ -16,13 +16,13 @@ public class PortfolioResponse {
     private Long artistId;
     private String artistName;
     private String artistAvatar;
-    private String artistSpecialties;
     private String artistExperience;
     private String artistPhone;
     private String title;
     private String description;
     private String imageUrl;
     private String additionalImages;
+    private java.util.List<PortfolioImageResponse> gallery;
     private String categoryName;
     private String tags;
     private Integer viewCount;

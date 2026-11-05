@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard, Sparkles, Calendar, Users, Clock,
-  Settings, LogOut, ArrowLeft, Menu, X, Shield, Bell, CheckCircle2
+  LogOut, ArrowLeft, Menu, X, Tag
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authStorage } from '../utils/authStorage';
@@ -34,14 +34,14 @@ const AdminLayout = () => {
       exact: true,
     },
     {
-      name: 'Quản Lý Dịch Vụ',
-      path: '/admin/services',
-      icon: Sparkles,
-    },
-    {
       name: 'Quản Lý Đơn Đặt Lịch',
       path: '/admin/bookings',
       icon: Calendar,
+    },
+    {
+      name: 'Quản Lý Dịch Vụ',
+      path: '/admin/services',
+      icon: Sparkles,
     },
     {
       name: 'Quản Lý Thợ Makeup',
@@ -49,9 +49,14 @@ const AdminLayout = () => {
       icon: Users,
     },
     {
-      name: 'Lịch Làm Việc ',
+      name: 'Lịch Làm Việc',
       path: '/admin/schedules',
       icon: Clock,
+    },
+    {
+      name: 'Mã Khuyến Mãi (Voucher)',
+      path: '/admin/vouchers',
+      icon: Tag,
     },
   ];
 
@@ -63,7 +68,7 @@ const AdminLayout = () => {
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-900 text-slate-100 antialiased font-sans">
+    <div className="min-h-screen flex bg-slate-900 text-slate-100 antialiased font-sans max-w-full overflow-x-hidden">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -80,9 +85,11 @@ const AdminLayout = () => {
         {/* Brand header */}
         <div className="h-20 flex items-center justify-between px-6 border-b border-slate-800/80">
           <Link to="/admin" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-pink-500 flex items-center justify-center shadow-lg shadow-rose-500/20">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
+            <img
+              src="/logo.jpg"
+              alt="DungDorys Logo"
+              className="w-10 h-10 rounded-full object-cover ring-2 ring-rose-500/50 shadow-md shadow-rose-500/20"
+            />
             <div>
               <span className="font-serif text-lg font-bold text-white tracking-wide">
                 Dung<span className="text-rose-400">Dorys</span>
@@ -169,9 +176,9 @@ const AdminLayout = () => {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 lg:pl-72 flex flex-col min-h-screen">
+      <div className="flex-1 lg:pl-72 flex flex-col min-h-screen min-w-0 max-w-full">
         {/* Top Navbar */}
-        <header className="sticky top-0 z-30 h-20 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 flex items-center justify-between px-4 sm:px-8">
+        <header className="sticky top-0 z-30 h-20 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 lg:px-8 w-full">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -190,11 +197,9 @@ const AdminLayout = () => {
           </div>
 
           <div className="flex items-center gap-3">
-
-
             <Link
               to="/"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors shrink-0"
             >
               <span>Trang chủ</span>
             </Link>
@@ -202,7 +207,7 @@ const AdminLayout = () => {
         </header>
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 p-4 sm:p-8 bg-slate-950">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-950 min-w-0 max-w-full">
           <Outlet />
         </main>
       </div>

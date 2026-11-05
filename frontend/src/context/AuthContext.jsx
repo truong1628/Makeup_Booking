@@ -37,6 +37,13 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
   };
 
+  const updateUser = (updatedData) => {
+    const updated = { ...user, ...updatedData };
+    setUser(updated);
+    authStorage.setUser(updated);
+    return updated;
+  };
+
   const isAuthenticated = authStorage.isAuthenticated();
   const currentRole = authStorage.getRole();
   const isAdmin = currentRole === 'ROLE_ADMIN';
@@ -56,6 +63,7 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        updateUser,
       }}
     >
       {children}

@@ -1,11 +1,9 @@
 // Utility định dạng tiền tệ, ngày giờ và trạng thái
 
 export const formatCurrency = (amount) => {
-  if (amount === undefined || amount === null) return '0 ₫';
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(amount);
+  const num = Number(amount);
+  if (amount === undefined || amount === null || Number.isNaN(num)) return '0 đ';
+  return `${new Intl.NumberFormat('vi-VN').format(Math.round(num))} đ`;
 };
 
 export const formatDate = (dateStr) => {
@@ -29,14 +27,44 @@ export const getStatusBadge = (status) => {
       return { text: 'Chờ đặt cọc', color: 'bg-amber-100 text-amber-800 border-amber-300' };
     case 'CONFIRMED':
       return { text: 'Đã xác nhận', color: 'bg-blue-100 text-blue-800 border-blue-300' };
+    case 'IN_PROGRESS':
+      return { text: 'Đang thực hiện', color: 'bg-sky-100 text-sky-800 border-sky-300' };
     case 'COMPLETED':
       return { text: 'Hoàn thành', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
     case 'CANCELLED':
       return { text: 'Đã hủy', color: 'bg-rose-100 text-rose-800 border-rose-300' };
     default:
-      return { text: status, color: 'bg-slate-100 text-slate-800 border-slate-300' };
+      return { text: status || 'Chưa xác định', color: 'bg-slate-100 text-slate-800 border-slate-300' };
   }
 };
+
+/**
+ * Định dạng chế độ gói dịch vụ sang tiếng Việt:
+ * 3 chế độ chính của hệ thống:
+ * 1. Tiết kiệm (SAVING / SEQUENTIAL - 1 thợ làm lần lượt)
+ * 2. Tiêu chuẩn (BALANCED / SINGLE - Phục vụ tiêu chuẩn)
+ * 3. Hỏa tốc (SPEED / PARALLEL - Nhiều thợ làm đồng thời để kịp giờ)
+ */
+export const formatDispatchPlan = (plan, mode) => {
+  const p = (plan || '').toUpperCase();
+  const m = (mode || '').toUpperCase();
+
+  if (p === 'SAVING' || m === 'SEQUENTIAL') {
+    return 'Tiết kiệm';
+  }
+  if (p === 'SPEED' || m === 'PARALLEL') {
+    return 'Hỏa tốc';
+  }
+  if (p === 'BALANCED' || m === 'SINGLE') {
+    return 'Tiêu chuẩn';
+  }
+  return 'Tiêu chuẩn';
+};
+
+export const formatExecutionMode = (mode, plan) => {
+  return formatDispatchPlan(plan, mode);
+};
+
 
 /**
  * Tính phụ phí di chuyển theo khoảng cách (km) từ Studio:
@@ -54,4 +82,21 @@ export const calculateTravelFee = (distanceKm) => {
   if (dist <= 20) return 100000;
   if (dist <= 100) return 200000;
   return 300000;
+};
+
+/**
+ * Giải mã các HTML entities thành ký tự gốc để hiển thị an toàn ở dạng TextNode thuần túy trong React.
+ * Khi đặt trong JSX {decodeHtmlEntities(str)}, React tạo TextNode trực tiếp,
+ * hiển thị đầy đủ các ký tự (như <script>...</script>) mà tuyệt đối không thực thi JavaScript.
+ */
+export const decodeHtmlEntities = (str) => {
+  if (!str) return '';
+  return String(str)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/');
 };

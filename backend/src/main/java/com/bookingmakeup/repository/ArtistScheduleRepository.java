@@ -12,4 +12,6 @@ import java.util.Optional;
 public interface ArtistScheduleRepository extends JpaRepository<ArtistSchedule, Long> {
     Optional<ArtistSchedule> findByMakeupArtistIdAndScheduleDate(Long makeupArtistId, LocalDate scheduleDate);
     List<ArtistSchedule> findByMakeupArtistIdOrderByScheduleDateAsc(Long makeupArtistId);
+    List<ArtistSchedule> findByScheduleDateBetweenOrderByScheduleDateAsc(LocalDate startDate, LocalDate endDate);
 }
+

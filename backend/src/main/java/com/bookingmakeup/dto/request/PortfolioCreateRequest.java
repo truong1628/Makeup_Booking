@@ -22,6 +22,8 @@ public class PortfolioCreateRequest {
 
     private String additionalImages;
 
+    private java.util.List<PortfolioImageRequest> gallery;
+
     private String categoryName;
 
     private String tags;

@@ -173,7 +173,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"serviceName\": \"Trang điểm kỷ yếu nhóm (từ 5 bạn)\",\n  \"price\": 250000,\n  \"duration\": 45,\n  \"description\": \"Trang điểm tone nhẹ nhàng trong trẻo phù hợp áo dài trắng\",\n  \"image\": \"https://images.unsplash.com/photo-1512496015851-a90fb38ba796\",\n  \"isCombo\": false\n}"
+          "raw": "{\n  \"serviceName\": \"Trang điểm kỷ yếu nhóm (từ 5 bạn)\",\n  \"price\": 250000,\n  \"duration\": 45,\n  \"description\": \"Trang điểm tone nhẹ nhàng trong trẻo phù hợp áo dài trắng\",\n  \"image\": \"\",\n  \"isCombo\": false\n}"
         },
         "url": {
           "raw": "http://localhost:8080/api/v1/services",
@@ -194,7 +194,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"serviceName\": \"Combo Dạ Tiệc VIP (Makeup + Tóc + Dán mi cao cấp)\",\n  \"price\": 990000,\n  \"duration\": 105,\n  \"description\": \"Gói khuyến mãi combo dành riêng cho dạ tiệc sang trọng\",\n  \"image\": \"https://images.unsplash.com/photo-1522337360788-8b13dee7a37e\",\n  \"isCombo\": true,\n  \"comboItems\": [\n    {\n      \"serviceId\": 1,\n      \"quantity\": 1\n    },\n    {\n      \"serviceId\": 3,\n      \"quantity\": 1\n    }\n  ]\n}"
+          "raw": "{\n  \"serviceName\": \"Combo Dạ Tiệc VIP (Makeup + Tóc + Dán mi cao cấp)\",\n  \"price\": 990000,\n  \"duration\": 105,\n  \"description\": \"Gói khuyến mãi combo dành riêng cho dạ tiệc sang trọng\",\n  \"image\": \"\",\n  \"isCombo\": true,\n  \"comboItems\": [\n    {\n      \"serviceId\": 1,\n      \"quantity\": 1\n    },\n    {\n      \"serviceId\": 3,\n      \"quantity\": 1\n    }\n  ]\n}"
         },
         "url": {
           "raw": "http://localhost:8080/api/v1/services",

@@ -46,15 +46,17 @@ const MainLayout = () => {
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
             <Link to="/" id="nav-brand-logo" className="flex items-center gap-3 group">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-rose-600 via-pink-500 to-amber-400 flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:scale-105 transition-transform duration-300">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
+              <img
+                src="/logo.jpg"
+                alt="DungDorys Makeup Artist Logo"
+                className="w-12 h-12 rounded-full object-cover shadow-md shadow-rose-500/20 ring-2 ring-rose-200/90 group-hover:scale-105 group-hover:ring-rose-400 transition-all duration-300"
+              />
               <div className="flex flex-col">
-                <span className="font-serif text-2xl font-bold tracking-tight text-slate-900 group-hover:text-rose-600 transition-colors">
+                <span className="font-serif text-2xl font-bold tracking-tight text-slate-900 group-hover:text-rose-600 transition-colors leading-tight">
                   Dung<span className="text-rose-600 italic">Dorys</span>
                 </span>
-                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
-                  Makeup Studio
+                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                  Makeup Artist
                 </span>
               </div>
             </Link>
@@ -81,14 +83,34 @@ const MainLayout = () => {
 
             {/* Right Action Buttons */}
             <div className="hidden md:flex items-center gap-4">
-              <Link
-                to="/booking"
-                id="btn-header-quick-book"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white text-sm font-semibold shadow-md shadow-rose-500/25 hover:shadow-lg hover:shadow-rose-500/35 hover:-translate-y-0.5 transition-all duration-200"
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Đặt Lịch Ngay</span>
-              </Link>
+              {isAdmin ? (
+                <Link
+                  to="/admin"
+                  id="btn-header-admin-portal"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-md transition-all duration-200"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Trang Quản Trị</span>
+                </Link>
+              ) : isArtist ? (
+                <Link
+                  to="/artist"
+                  id="btn-header-artist-portal"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold shadow-md transition-all duration-200"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Khu Vực Nghệ Sĩ</span>
+                </Link>
+              ) : (
+                <Link
+                  to="/booking"
+                  id="btn-header-quick-book"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white text-sm font-semibold shadow-md shadow-rose-500/25 hover:shadow-lg hover:shadow-rose-500/35 hover:-translate-y-0.5 transition-all duration-200"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Đặt Lịch Ngay</span>
+                </Link>
+              )}
 
               {/* User authentication states */}
               {isAuthenticated ? (
@@ -98,8 +120,12 @@ const MainLayout = () => {
                     id="btn-user-menu"
                     className="flex items-center gap-2.5 px-3.5 py-2 rounded-full border border-slate-200 hover:border-rose-300 bg-white shadow-sm hover:shadow transition-all"
                   >
-                    <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-700 font-bold flex items-center justify-center text-xs">
-                      {user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'U'}
+                    <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-700 font-bold flex items-center justify-center text-xs overflow-hidden border border-rose-200">
+                      {user?.avatar ? (
+                        <img src={user.avatar} alt={user?.fullName || 'User'} className="w-full h-full object-cover" />
+                      ) : (
+                        user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'U'
+                      )}
                     </div>
                     <span className="text-sm font-medium text-slate-700 max-w-[120px] truncate">
                       {user?.fullName || user?.email}
@@ -116,16 +142,28 @@ const MainLayout = () => {
                       <div className="px-4 py-2.5 border-b border-slate-100">
                         <p className="text-xs text-slate-400 font-medium">Đã đăng nhập với</p>
                         <p className="text-sm font-semibold text-slate-800 truncate">{user?.email}</p>
-
                       </div>
 
-                      <Link
-                        to="/my-bookings"
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                      >
-                        <Calendar className="w-4 h-4" />
-                        <span>Lịch hẹn của tôi</span>
-                      </Link>
+                      {!isAdmin && (
+                        <>
+                          <Link
+                            to="/profile"
+                            id="btn-nav-profile"
+                            className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors font-medium"
+                          >
+                            <User className="w-4 h-4 text-rose-500" />
+                            <span>Hồ sơ cá nhân</span>
+                          </Link>
+
+                          <Link
+                            to="/my-bookings"
+                            className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                          >
+                            <Calendar className="w-4 h-4 text-rose-500" />
+                            <span>Lịch hẹn của tôi</span>
+                          </Link>
+                        </>
+                      )}
 
                       {isAdmin && (
                         <Link
@@ -211,23 +249,54 @@ const MainLayout = () => {
               </Link>
             ))}
 
-            <Link
-              to="/booking"
-              onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 text-white font-semibold text-sm shadow-md"
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Đặt Lịch Ngay</span>
-            </Link>
-
-            {isAuthenticated && (
+            {isAdmin ? (
               <Link
-                to="/my-bookings"
+                to="/admin"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white font-semibold text-sm shadow-md"
               >
-                Lịch Hẹn Của Tôi
+                <ShieldCheck className="w-4 h-4" />
+                <span>Trang Quản Trị (Admin)</span>
               </Link>
+            ) : isArtist ? (
+              <Link
+                to="/artist"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 text-white font-semibold text-sm shadow-md"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Khu Vực Nghệ Sĩ (Artist Studio)</span>
+              </Link>
+            ) : (
+              <Link
+                to="/booking"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 text-white font-semibold text-sm shadow-md"
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Đặt Lịch Ngay</span>
+              </Link>
+            )}
+
+            {isAuthenticated && !isAdmin && (
+              <>
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <User className="w-4 h-4 text-rose-500" />
+                  <span>Hồ Sơ Cá Nhân</span>
+                </Link>
+                <Link
+                  to="/my-bookings"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <Calendar className="w-4 h-4 text-rose-500" />
+                  <span>Lịch Hẹn Của Tôi</span>
+                </Link>
+              </>
             )}
             {isAdmin && (
               <Link
@@ -294,15 +363,22 @@ const MainLayout = () => {
             {/* Col 1: Brand Info */}
             <div className="space-y-4 md:col-span-1">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-400 flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-white" />
+                <img
+                  src="/logo.jpg"
+                  alt="DungDorys Makeup Artist Logo"
+                  className="w-12 h-12 rounded-full object-cover shadow-lg shadow-rose-500/25 ring-2 ring-rose-400/50"
+                />
+                <div className="flex flex-col">
+                  <span className="font-serif text-2xl font-bold text-white tracking-tight leading-tight">
+                    Dung<span className="text-rose-400 italic">Dorys</span>
+                  </span>
+                  <span className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">
+                    Makeup Artist
+                  </span>
                 </div>
-                <span className="font-serif text-2xl font-bold text-white tracking-tight">
-                  Dung<span className="text-rose-400 italic">Dorys</span>
-                </span>
               </div>
               <p className="text-sm text-slate-400 leading-relaxed">
-                DungDorys Makeup Studio - Hệ thống đặt lịch Makeup nghệ thuật hàng đầu. Tôn vinh nét đẹp độc bản và rạng rỡ của bạn trong mọi khoảnh khắc trọng đại.
+                DungDorys Makeup Artist - Hệ thống đặt lịch Makeup nghệ thuật hàng đầu. Tôn vinh nét đẹp độc bản và rạng rỡ của bạn trong mọi khoảnh khắc trọng đại.
               </p>
               <div className="flex items-center gap-3 text-xs text-rose-300">
                 <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />

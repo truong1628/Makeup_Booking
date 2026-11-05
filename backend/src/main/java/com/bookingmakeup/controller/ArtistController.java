@@ -33,6 +33,16 @@ import java.util.Optional;
 import com.bookingmakeup.repository.UserRepository;
 import com.bookingmakeup.entity.User;
 
+import com.bookingmakeup.entity.Booking;
+import com.bookingmakeup.entity.Payment;
+import com.bookingmakeup.enums.PaymentMethod;
+import com.bookingmakeup.enums.PaymentStatus;
+import com.bookingmakeup.repository.BookingRepository;
+import com.bookingmakeup.repository.PaymentRepository;
+import java.math.BigDecimal;
+
+import com.bookingmakeup.service.BookingService;
+
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/artist")
@@ -46,10 +56,101 @@ public class ArtistController {
     private final ArtistScheduleRepository artistScheduleRepository;
     private final PortfolioService portfolioService;
     private final UserRepository userRepository;
+    private final BookingService bookingService;
+    private final BookingRepository bookingRepository;
+    private final PaymentRepository paymentRepository;
 
     private MakeupArtist getArtistFromPrincipal(UserPrincipal currentUser) {
         return makeupArtistRepository.findByUserId(currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("MakeupArtist", "userId", currentUser.getId()));
+    }
+
+    /**
+     * Cập nhật trạng thái ca làm việc (Chuyên gia bắt đầu thực hiện / hoàn thành)
+     */
+    @PatchMapping("/assignments/{bookingId}/status")
+    public ApiResponse<Map<String, Object>> updateAssignmentStatus(
+            @PathVariable Long bookingId,
+            @RequestParam com.bookingmakeup.enums.BookingStatus status,
+            @AuthenticationPrincipal UserPrincipal currentUser
+    ) {
+        log.info("Artist {} cập nhật trạng thái đơn đặt lịch ID: {} sang {}", currentUser.getId(), bookingId, status);
+
+        if (status == com.bookingmakeup.enums.BookingStatus.COMPLETED) {
+            Booking booking = bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", bookingId));
+
+            List<Payment> payments = paymentRepository.findByBookingId(bookingId);
+            BigDecimal totalPaid = BigDecimal.ZERO;
+            for (Payment p : payments) {
+                if (p.getStatus() == PaymentStatus.PAID) {
+                    totalPaid = totalPaid.add(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
+                }
+            }
+
+            BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
+            boolean hasCollectedNote = booking.getNotes() != null && booking.getNotes().contains("[ĐÃ THU ĐỦ TIỀN");
+            boolean isFullyPaid = hasCollectedNote || totalPaid.compareTo(totalPrice) >= 0;
+
+            if (!isFullyPaid) {
+                throw new BadRequestException("Bạn phải bấm xác nhận 'Đã Thu Tiền' từ khách hàng trước khi hoàn thành ca làm việc!");
+            }
+        }
+
+        bookingService.updateBookingStatus(bookingId, status);
+        Map<String, Object> map = new HashMap<>();
+        map.put("bookingId", bookingId);
+        map.put("status", status);
+        return ApiResponse.success("Cập nhật trạng thái ca làm việc thành công", map);
+    }
+
+    /**
+     * Chuyên gia xác nhận đã thu tiền từ khách hàng
+     */
+    @PostMapping("/assignments/{bookingId}/collect-payment")
+    @Transactional
+    public ApiResponse<Map<String, Object>> collectPayment(
+            @PathVariable Long bookingId,
+            @AuthenticationPrincipal UserPrincipal currentUser
+    ) {
+        log.info("Artist {} xác nhận đã thu tiền cho đơn đặt lịch ID: {}", currentUser.getId(), bookingId);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", bookingId));
+
+        List<Payment> payments = paymentRepository.findByBookingId(bookingId);
+        BigDecimal totalPaid = BigDecimal.ZERO;
+        for (Payment p : payments) {
+            if (p.getStatus() == PaymentStatus.PAID) {
+                totalPaid = totalPaid.add(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
+            }
+        }
+
+        BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
+        BigDecimal remaining = totalPrice.subtract(totalPaid).max(BigDecimal.ZERO);
+
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            Payment cashPayment = Payment.builder()
+                    .booking(booking)
+                    .amount(remaining)
+                    .paymentMethod(PaymentMethod.CASH)
+                    .status(PaymentStatus.PAID)
+                    .transactionCode("ARTIST_COLLECTED_" + bookingId + "_" + System.currentTimeMillis())
+                    .paymentDate(java.time.LocalDateTime.now())
+                    .build();
+            paymentRepository.save(cashPayment);
+        }
+
+        String currentNotes = booking.getNotes() != null ? booking.getNotes() : "";
+        if (!currentNotes.contains("[ĐÃ THU ĐỦ TIỀN]")) {
+            booking.setNotes(("[ĐÃ THU ĐỦ TIỀN] " + currentNotes).trim());
+            bookingRepository.save(booking);
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("bookingId", bookingId);
+        result.put("isFullyPaid", true);
+        result.put("collectedAmount", remaining);
+        return ApiResponse.success("Đã ghi nhận thu tiền thành công!", result);
     }
 
     /**
@@ -61,38 +162,159 @@ public class ArtistController {
         MakeupArtist artist = getArtistFromPrincipal(currentUser);
         List<BookingItem> items = bookingItemRepository.findByArtistIdOrderByDateAndTime(artist.getId());
 
-        List<Map<String, Object>> result = items.stream().map(item -> {
+        // Chỉ hiển thị các đơn đã cọc hoặc thanh toán tại studio (loại bỏ đơn chờ cọc PENDING_PAYMENT)
+        List<Map<String, Object>> result = items.stream()
+                .filter(item -> item.getBooking() != null && item.getBooking().getStatus() != com.bookingmakeup.enums.BookingStatus.PENDING_PAYMENT)
+                .map(item -> {
+            Booking booking = item.getBooking();
             Map<String, Object> map = new HashMap<>();
             map.put("itemId", item.getId());
-            map.put("bookingId", item.getBooking().getId());
-            map.put("bookingDate", item.getBooking().getBookingDate());
+            map.put("bookingId", booking.getId());
+            map.put("bookingDate", booking.getBookingDate());
             map.put("startTime", item.getStartTime());
             map.put("endTime", item.getEndTime());
             map.put("serviceName", item.getMakeupService().getServiceName());
             map.put("duration", item.getMakeupService().getDuration());
             map.put("price", item.getPrice());
-            map.put("bookingStatus", item.getBooking().getStatus());
-            map.put("locationType", item.getBooking().getLocationType());
-            map.put("executionMode", item.getBooking().getExecutionMode());
+            map.put("bookingStatus", booking.getStatus());
+            map.put("locationType", booking.getLocationType());
+            map.put("executionMode", booking.getExecutionMode());
+            map.put("totalPrice", booking.getTotalPrice());
+            map.put("depositAmount", booking.getDepositAmount());
+
+            // Thông tin thanh toán & số tiền cần thu
+            List<Payment> payments = paymentRepository.findByBookingId(booking.getId());
+            BigDecimal totalPaid = BigDecimal.ZERO;
+            String paymentMethod = "CASH";
+            for (Payment p : payments) {
+                if (p.getStatus() == PaymentStatus.PAID) {
+                    totalPaid = totalPaid.add(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
+                }
+                if (p.getPaymentMethod() != null) {
+                    paymentMethod = p.getPaymentMethod().name();
+                }
+            }
+
+            BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
+            boolean hasCollectedNote = booking.getNotes() != null && booking.getNotes().contains("[ĐÃ THU ĐỦ TIỀN");
+            boolean isFullyPaid = hasCollectedNote || totalPaid.compareTo(totalPrice) >= 0;
+
+            BigDecimal remainingToCollect = isFullyPaid 
+                ? BigDecimal.ZERO 
+                : totalPrice.subtract(totalPaid).max(BigDecimal.ZERO);
+
+            map.put("totalPaid", totalPaid);
+            map.put("isFullyPaid", isFullyPaid);
+            map.put("remainingToCollect", remainingToCollect);
+            map.put("paymentMethod", paymentMethod);
 
             // Thông tin khách hàng
-            map.put("customerName", item.getBooking().getUser().getFullName());
-            map.put("customerPhone", item.getBooking().getUser().getPhone());
+            map.put("customerName", booking.getUser().getFullName());
+            map.put("customerPhone", booking.getUser().getPhone());
 
             // Địa chỉ nếu làm tại nhà
-            Optional<BookingAddress> addrOpt = bookingAddressRepository.findByBookingId(item.getBooking().getId());
+            Optional<BookingAddress> addrOpt = bookingAddressRepository.findByBookingId(booking.getId());
             if (addrOpt.isPresent()) {
                 map.put("address", addrOpt.get().getAddress());
                 map.put("distanceKm", addrOpt.get().getDistanceKm());
             } else {
-                map.put("address", "Tại Studio Lumière (120 Phố Huế, Q. Hai Bà Trưng)");
+                map.put("address", "Tại Studio DungDorys (120 Phố Huế, Q. Hai Bà Trưng)");
                 map.put("distanceKm", 0);
             }
+
+            // Trạng thái xin hủy ca của thợ
+            map.put("cancelRequested", item.getCancelRequested() != null && item.getCancelRequested());
+            map.put("cancelReason", item.getCancelReason());
+            map.put("cancelStatus", item.getCancelStatus());
+            map.put("cancelRequestedAt", item.getCancelRequestedAt());
+            map.put("originalArtistId", item.getOriginalArtistId());
+
+            // Kiểm tra ca có thể gửi yêu cầu hủy không (trước giờ bắt đầu ít nhất 2 tiếng và chưa hủy/hoàn thành)
+            java.time.LocalDateTime shiftStart = java.time.LocalDateTime.of(booking.getBookingDate(), item.getStartTime());
+            java.time.LocalDateTime now = java.time.LocalDateTime.now();
+            boolean canCancel = now.isBefore(shiftStart.minusHours(2)) 
+                    && booking.getStatus() != com.bookingmakeup.enums.BookingStatus.COMPLETED
+                    && booking.getStatus() != com.bookingmakeup.enums.BookingStatus.CANCELLED
+                    && !("PENDING".equals(item.getCancelStatus()));
+            map.put("canCancel", canCancel);
 
             return map;
         }).toList();
 
         return ApiResponse.success("Lấy danh sách ca làm việc của thợ thành công", result);
+    }
+
+    /**
+     * Thợ yêu cầu hủy ca làm việc (gửi lý do chờ Admin duyệt để đổi thợ khác)
+     * Ràng buộc: Chỉ được yêu cầu trước giờ bắt đầu ít nhất 2 tiếng.
+     */
+    @PostMapping("/assignments/{itemId}/request-cancel")
+    @Transactional
+    public ApiResponse<Map<String, Object>> requestCancelAssignment(
+            @PathVariable Long itemId,
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal UserPrincipal currentUser
+    ) {
+        MakeupArtist artist = getArtistFromPrincipal(currentUser);
+        BookingItem item = bookingItemRepository.findById(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException("BookingItem", "id", itemId));
+
+        if (!item.getMakeupArtist().getId().equals(artist.getId())) {
+            throw new BadRequestException("Bạn không được phân công phụ trách ca làm việc này!");
+        }
+
+        Booking booking = item.getBooking();
+        if (booking == null) {
+            throw new BadRequestException("Đơn đặt lịch không tồn tại!");
+        }
+
+        if (booking.getStatus() == com.bookingmakeup.enums.BookingStatus.COMPLETED) {
+            throw new BadRequestException("Không thể yêu cầu hủy ca làm việc đã hoàn tất!");
+        }
+        if (booking.getStatus() == com.bookingmakeup.enums.BookingStatus.CANCELLED) {
+            throw new BadRequestException("Đơn đặt lịch này đã bị hủy từ trước!");
+        }
+
+        if (Boolean.TRUE.equals(item.getCancelRequested()) && "PENDING".equals(item.getCancelStatus())) {
+            throw new BadRequestException("Bạn đã gửi yêu cầu hủy ca này rồi. Vui lòng chờ Admin xem xét và điều phối thợ khác!");
+        }
+
+        // Kiểm tra ràng buộc thời gian: chỉ được gửi trước giờ bắt đầu làm ít nhất 2 tiếng
+        java.time.LocalDateTime shiftStart = java.time.LocalDateTime.of(booking.getBookingDate(), item.getStartTime());
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        if (!now.isBefore(shiftStart.minusHours(2))) {
+            throw new BadRequestException("Chỉ được gửi yêu cầu hủy ca trước giờ bắt đầu làm ít nhất 2 tiếng để Admin kịp điều phối thợ thay thế!");
+        }
+
+        String reason = body != null && body.containsKey("reason") ? body.get("reason").toString().trim() : "";
+        if (reason.isBlank()) {
+            throw new BadRequestException("Vui lòng ghi rõ lý do bạn cần xin hủy ca làm việc này!");
+        }
+
+        item.setCancelRequested(true);
+        item.setCancelReason(reason);
+        item.setCancelRequestedAt(java.time.LocalDateTime.now());
+        item.setCancelStatus("PENDING");
+        bookingItemRepository.save(item);
+
+        // Lưu thông tin vào ghi chú đơn để Admin tiện theo dõi
+        String artistName = artist.getUser() != null ? artist.getUser().getFullName() : ("Thợ #" + artist.getId());
+        String cancelNote = String.format("[YÊU CẦU ĐỔI THỢ] Thợ %s xin hủy ca #%d (Dịch vụ: %s). Lý do: %s",
+                artistName, item.getId(), item.getMakeupService().getServiceName(), reason);
+        String currentNotes = booking.getNotes() != null ? booking.getNotes() : "";
+        if (!currentNotes.contains("[YÊU CẦU ĐỔI THỢ]")) {
+            booking.setNotes((cancelNote + "\n" + currentNotes).trim());
+            bookingRepository.save(booking);
+        }
+
+        log.info("Artist {} (#{}) đã gửi yêu cầu hủy ca item #{}. Lý do: {}", artistName, artist.getId(), itemId, reason);
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("itemId", itemId);
+        res.put("bookingId", booking.getId());
+        res.put("cancelStatus", "PENDING");
+        res.put("cancelReason", reason);
+        return ApiResponse.success("Đã gửi yêu cầu hủy ca đến Quản trị viên thành công. Vui lòng chờ Admin duyệt và điều phối thợ khác!", res);
     }
 
     /**
@@ -161,7 +383,6 @@ public class ArtistController {
         map.put("phone", artist.getUser().getPhone());
         map.put("avatar", artist.getUser().getAvatar());
         map.put("experience", artist.getExperience());
-        map.put("specialties", artist.getSpecialties());
         map.put("workingHours", artist.getWorkingHours());
         map.put("workingDays", artist.getWorkingDays());
         map.put("active", artist.getActive());
@@ -170,7 +391,7 @@ public class ArtistController {
     }
 
     /**
-     * 5. Cập nhật hồ sơ cá nhân và chuyên môn của thợ
+     * 5. Cập nhật hồ sơ cá nhân của thợ
      */
     @PutMapping("/profile")
     @Transactional
@@ -195,7 +416,6 @@ public class ArtistController {
         }
 
         if (body.containsKey("experience")) artist.setExperience((String) body.get("experience"));
-        if (body.containsKey("specialties")) artist.setSpecialties((String) body.get("specialties"));
         if (body.containsKey("workingHours")) artist.setWorkingHours((String) body.get("workingHours"));
         if (body.containsKey("workingDays")) artist.setWorkingDays((String) body.get("workingDays"));
         if (body.containsKey("active") && body.get("active") != null) {
