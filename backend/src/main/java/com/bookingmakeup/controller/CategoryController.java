@@ -13,6 +13,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Controller quản lý danh mục dịch vụ trang điểm (Service Category)
+ * Cung cấp các API công khai cho khách hàng duyệt danh mục và các API quản trị cho Admin quản lý CRUD danh mục.
+ */
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor

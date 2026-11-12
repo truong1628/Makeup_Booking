@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Sparkles, Mail, Lock, LogIn, AlertCircle, Eye, EyeOff, ShieldCheck, Palette, User } from 'lucide-react';
+import { Sparkles, Mail, Lock, LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 
@@ -95,15 +95,6 @@ const LoginPage = () => {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const fillAccount = (testEmail, testPass) => {
-    setFormData({
-      email: testEmail,
-      password: testPass,
-    });
-    setFieldErrors({});
-    setServerError(null);
   };
 
   return (
@@ -214,63 +205,7 @@ const LoginPage = () => {
           </button>
         </form>
 
-        {/* Quick Demo Accounts Helper */}
-        <div className="pt-3 border-t border-slate-100 space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center">
-            Bấm chọn để điền nhanh tài khoản mẫu:
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-            {/* Admin Button */}
-            <button
-              type="button"
-              id="btn-quick-admin"
-              onClick={() => fillAccount('admin@gmail.com', '123456')}
-              className="p-2.5 rounded-xl bg-slate-50 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-200 hover:border-amber-300 text-center transition-all shadow-xs group cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4 mx-auto text-amber-500 mb-1" />
-              <span className="font-bold block text-[11px]">Admin</span>
-              <span className="text-slate-400 group-hover:text-amber-700 text-[9px] truncate block">Quản Trị Viên</span>
-            </button>
-
-            {/* Artist 1: Dung Dorys */}
-            <button
-              type="button"
-              id="btn-quick-artist-dung"
-              onClick={() => fillAccount('dung@gmail.com', '123456')}
-              className="p-2.5 rounded-xl bg-slate-50 hover:bg-purple-50 text-slate-700 hover:text-purple-800 border border-slate-200 hover:border-purple-300 text-center transition-all shadow-xs group cursor-pointer"
-            >
-              <Palette className="w-4 h-4 mx-auto text-purple-500 mb-1" />
-              <span className="font-bold block text-[11px]">Dung Dorys</span>
-              <span className="text-slate-400 group-hover:text-purple-700 text-[9px] truncate block">Thợ Makeup</span>
-            </button>
-
-            {/* Artist 2: Thùy Linh */}
-            <button
-              type="button"
-              id="btn-quick-artist-linh"
-              onClick={() => fillAccount('linh.artist@gmail.com', '123456')}
-              className="p-2.5 rounded-xl bg-slate-50 hover:bg-purple-50 text-slate-700 hover:text-purple-800 border border-slate-200 hover:border-purple-300 text-center transition-all shadow-xs group cursor-pointer"
-            >
-              <Palette className="w-4 h-4 mx-auto text-purple-500 mb-1" />
-              <span className="font-bold block text-[11px]">Thùy Linh</span>
-              <span className="text-slate-400 group-hover:text-purple-700 text-[9px] truncate block">Thợ Makeup</span>
-            </button>
-
-            {/* Customer Button */}
-            <button
-              type="button"
-              id="btn-quick-customer"
-              onClick={() => fillAccount('customer@gmail.com', '123456')}
-              className="p-2.5 rounded-xl bg-slate-50 hover:bg-rose-50 text-slate-700 hover:text-rose-800 border border-slate-200 hover:border-rose-300 text-center transition-all shadow-xs group cursor-pointer"
-            >
-              <User className="w-4 h-4 mx-auto text-rose-500 mb-1" />
-              <span className="font-bold block text-[11px]">Customer</span>
-              <span className="text-slate-400 group-hover:text-rose-700 text-[9px] truncate block">Khách Hàng</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="text-center text-xs text-slate-500">
+        <div className="pt-2 text-center text-xs text-slate-500">
           Chưa có tài khoản?{' '}
           <Link to="/register" className="font-semibold text-rose-600 hover:underline">
             Đăng ký tài khoản mới

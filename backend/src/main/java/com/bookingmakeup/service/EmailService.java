@@ -20,6 +20,10 @@ import java.text.DecimalFormat;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
+/**
+ * Service xử lý gửi email thông báo hóa đơn và xác nhận đặt lịch tự động
+ * Sử dụng JavaMailSender, chạy hoàn toàn bất đồng bộ (@Async) trên thread pool riêng để không làm nghẽn luồng thanh toán VNPay.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

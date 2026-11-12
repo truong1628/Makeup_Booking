@@ -8,6 +8,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Controller quản lý bộ sưu tập tác phẩm trang điểm (Lookbook / Portfolio)
+ * Cung cấp API công khai cho khách hàng duyệt bộ sưu tập, tìm kiếm layout makeup và xem chi tiết hình ảnh.
+ */
 @RestController
 @RequestMapping("/api/v1/portfolios")
 @RequiredArgsConstructor
@@ -16,10 +20,8 @@ public class PortfolioController {
     private final PortfolioService portfolioService;
 
     /**
-     * 1. Khách hàng xem danh sách tác phẩm bộ sưu tập (có tìm kiếm và lọc)
-     * @param artistId (Tùy chọn) lọc theo mã thợ
-     * @param category (Tùy chọn) lọc theo phong cách
-     * @param search   (Tùy chọn) tìm kiếm theo tiêu đề, tags, tên thợ
+     * Public API: Tìm kiếm và lọc danh sách tác phẩm bộ sưu tập
+     * Cho phép lọc theo chuyên viên trang điểm, phân loại phong cách hoặc từ khóa tìm kiếm.
      */
     @GetMapping
     public ApiResponse<List<PortfolioResponse>> searchPortfolios(
@@ -32,7 +34,7 @@ public class PortfolioController {
     }
 
     /**
-     * 2. Lấy danh sách các danh mục / phong cách tác phẩm
+     * Public API: Lấy danh sách phân loại phong cách có trong bộ sưu tập (Cô Dâu, Dự Tiệc, Kỷ Yếu...)
      */
     @GetMapping("/categories")
     public ApiResponse<List<String>> getCategories() {
@@ -41,7 +43,8 @@ public class PortfolioController {
     }
 
     /**
-     * 3. Xem chi tiết tác phẩm bộ sưu tập
+     * Public API: Lấy chi tiết tác phẩm trang điểm theo ID
+     * Trả về toàn bộ ảnh chính, danh sách ảnh phụ, thông tin chuyên viên thực hiện và tự động tăng lượt xem.
      */
     @GetMapping("/{id}")
     public ApiResponse<PortfolioResponse> getPortfolioById(@PathVariable Long id) {

@@ -17,6 +17,10 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * Service quản lý danh mục dịch vụ trang điểm (Service Category)
+ * Xử lý tạo mới, cập nhật, sắp xếp thứ tự hiển thị, tự động sinh mã code và ràng buộc toàn vẹn khi xóa danh mục.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -24,6 +28,9 @@ public class ServiceCategoryService {
 
     private final ServiceCategoryRepository serviceCategoryRepository;
 
+    /**
+     * Lấy danh sách các danh mục dịch vụ đang hoạt động (active = true), sắp xếp theo displayOrder tăng dần
+     */
     @Transactional(readOnly = true)
     public List<ServiceCategoryResponse> getActiveCategories() {
         return serviceCategoryRepository.findByActiveTrueOrderByDisplayOrderAsc()
@@ -32,6 +39,9 @@ public class ServiceCategoryService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Lấy toàn bộ danh mục dịch vụ phục vụ trang quản trị Admin (bao gồm cả danh mục bị ẩn)
+     */
     @Transactional(readOnly = true)
     public List<ServiceCategoryResponse> getAllCategoriesForAdmin() {
         return serviceCategoryRepository.findAllByOrderByDisplayOrderAsc()
@@ -40,6 +50,9 @@ public class ServiceCategoryService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Lấy thông tin chi tiết của 1 danh mục dịch vụ theo ID
+     */
     @Transactional(readOnly = true)
     public ServiceCategoryResponse getCategoryById(Long id) {
         ServiceCategory category = serviceCategoryRepository.findById(id)
@@ -47,6 +60,10 @@ public class ServiceCategoryService {
         return mapToResponse(category);
     }
 
+    /**
+     * Tạo mới danh mục dịch vụ
+     * Tự động sinh mã slug không dấu nếu người dùng không nhập code, kiểm tra chống trùng lặp mã code.
+     */
     @Transactional
     public ServiceCategoryResponse createCategory(ServiceCategoryRequest request) {
         String code = request.getCode() != null && !request.getCode().isBlank()
@@ -71,6 +88,10 @@ public class ServiceCategoryService {
         return mapToResponse(saved);
     }
 
+    /**
+     * Cập nhật thông tin danh mục dịch vụ theo ID
+     * Kiểm tra chống trùng mã code với các danh mục khác trong hệ thống.
+     */
     @Transactional
     public ServiceCategoryResponse updateCategory(Long id, ServiceCategoryRequest request) {
         ServiceCategory category = serviceCategoryRepository.findById(id)
@@ -95,6 +116,9 @@ public class ServiceCategoryService {
         return mapToResponse(updated);
     }
 
+    /**
+     * Chuyển đổi trạng thái hiển thị (Bật/Tắt) của danh mục
+     */
     @Transactional
     public ServiceCategoryResponse toggleStatus(Long id) {
         ServiceCategory category = serviceCategoryRepository.findById(id)
@@ -106,6 +130,10 @@ public class ServiceCategoryService {
         return mapToResponse(saved);
     }
 
+    /**
+     * Xóa danh mục dịch vụ khỏi hệ thống
+     * Ràng buộc: Không cho phép xóa nếu danh mục đang có dịch vụ liên kết để tránh lỗi dữ liệu mồ côi.
+     */
     @Transactional
     public void deleteCategory(Long id) {
         ServiceCategory category = serviceCategoryRepository.findById(id)

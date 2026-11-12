@@ -119,7 +119,7 @@ const BookingPage = () => {
   const [locationType, setLocationType] = useState('STUDIO'); // 'STUDIO' | 'HOME'
   const [homeAddress, setHomeAddress] = useState('');
   const [addressDetails, setAddressDetails] = useState('');
-  const [distanceKm, setDistanceKm] = useState(5);
+  const [distanceKm, setDistanceKm] = useState(0);
 
   // Step 3: Model 2 - Smart Dispatch Scheduling
   const getLocalTodayStr = () => {
@@ -950,16 +950,10 @@ const BookingPage = () => {
       <div className="max-w-6xl mx-auto space-y-8">
 
         {/* Header Title */}
-        <div className="text-center space-y-2">
-          <span className="text-xs uppercase tracking-widest font-bold text-rose-600 bg-rose-50 px-3 py-1 rounded-full border border-rose-100">
-            Đặt Lịch Chuyên Nghiệp · MNM Makeup Studio
+        <div className="text-center">
+          <span className="inline-block text-xs uppercase tracking-widest font-bold text-rose-600 bg-rose-50 px-3.5 py-1.5 rounded-full border border-rose-100">
+            Đặt Lịch Chuyên Nghiệp · DungDorys Makeup Studio
           </span>
-          <h1 className="text-3xl sm:text-4xl font-serif font-bold text-slate-900">
-            Trang Điểm & Tạo Mẫu Tóc Theo Yêu Cầu
-          </h1>
-          <p className="text-sm text-slate-600 max-w-xl mx-auto">
-            Hệ thống tự động sắp xếp số lượng chuyên viên makeup tối ưu dựa trên số người và giờ bạn cần xong để kịp sự kiện.
-          </p>
         </div>
 
         {/* Banner cảnh báo khi tài khoản là Admin hoặc Artist */}
@@ -1220,7 +1214,7 @@ const BookingPage = () => {
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-sm text-slate-900">Tại Studio MNM</h4>
+                        <h4 className="font-bold text-sm text-slate-900">Tại Studio DungDorys</h4>
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                           Miễn phí di chuyển
                         </span>
@@ -1263,7 +1257,7 @@ const BookingPage = () => {
                       initialAddress={homeAddress}
                       initialDistanceKm={distanceKm}
                       onLocationChange={({ address: newAddr, distanceKm: newDist }) => {
-                        if (newAddr) setHomeAddress(newAddr);
+                        setHomeAddress(newAddr || '');
                         if (newDist !== undefined && newDist !== null) setDistanceKm(newDist);
                       }}
                     />
@@ -1332,7 +1326,7 @@ const BookingPage = () => {
                   <p className="text-xs text-slate-500 mt-1">
                     {isSingleClientSingleService
                       ? 'Nhập thời gian bạn cần hoàn thành để hệ thống tính toán tiến độ phục vụ tiêu chuẩn'
-                      : 'Nhập giờ bạn cần hoàn thành để kịp sự kiện, hệ thống sẽ đề xuất các phương án 1, 2 hoặc 3 chuyên viên tối ưu nhất'}
+                      : 'Nhập giờ bạn cần hoàn thành để kịp sự kiện, hệ thống sẽ tự động tính toán số lượng chuyên viên tối ưu nhất theo lực lượng đang rảnh'}
                   </p>
                 </div>
 
@@ -1417,132 +1411,6 @@ const BookingPage = () => {
                       <span className="font-semibold">{timeValidationError}</span>
                     </div>
                   )}
-
-                  {/* HERO LIVE CALCULATION RESULT BOX */}
-                  {currentPlan && (
-                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-rose-50/60 via-purple-50/40 to-white border border-rose-200/80 shadow-xs space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-100/70 pb-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                            <Sparkles className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <span className="text-[10px] uppercase font-bold tracking-wider text-rose-600">
-                              {isSingleClientSingleService ? 'Kết Quả Tính Toán Hoàn Thành' : 'Kết Quả Tính Toán Hoàn Thành Cho Phương Án Đang Chọn'}
-                            </span>
-                            <h4 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-                              <span>
-                                {isSingleClientSingleService
-                                  ? (selectedServicesList[0]?.serviceName || 'Dịch vụ tiêu chuẩn')
-                                  : (currentPlan.planName?.replace(/\s*\([^)]*\)/g, '') || currentPlan.planName)}
-                              </span>
-                              <span className="text-xs px-2.5 py-0.5 rounded-full font-sans font-bold bg-white text-rose-700 border border-rose-200 shadow-2xs">
-                                {isSingleClientSingleService ? '1 Chuyên Viên Phục Vụ' : `${currentPlan.artistCount} Chuyên Viên`}
-                              </span>
-                            </h4>
-                          </div>
-                        </div>
-
-                        {/* Status Diff Badge */}
-                        {timeValidationError ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-100 text-red-800 text-xs font-bold border border-red-200 shadow-2xs">
-                            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                            {timeValidationError}
-                          </span>
-                        ) : currentDiff !== null ? (
-                          currentDiff > 0 ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 shadow-2xs">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                              Xong sớm hơn {formatDiffText(currentDiff)} so với hạn chót {userEndTime}!
-                            </span>
-                          ) : currentDiff === 0 ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-100 text-teal-800 text-xs font-bold border border-teal-200 shadow-2xs">
-                              <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
-                              Kịp giờ hoàn hảo đúng hạn chót {userEndTime}!
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300 shadow-2xs">
-                              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                              Trễ hơn {formatDiffText(currentDiff)} so với hạn chót {userEndTime}!
-                            </span>
-                          )
-                        ) : null}
-                      </div>
-
-                      {/* Main Time Visual Display */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                        {/* Start time */}
-                        <div className="p-3 rounded-xl bg-white/90 border border-slate-200/80 shadow-2xs">
-                          <span className="text-[11px] text-slate-500 font-medium block mb-0.5">Bắt đầu thực hiện:</span>
-                          <span className="text-lg font-bold font-mono text-slate-900 flex items-center gap-1.5">
-                            <Clock className="w-4 h-4 text-slate-500" />
-                            {displayStartTime}
-                          </span>
-                        </div>
-
-                        {/* Calculated End time (PROMINENT HIGHLIGHT) */}
-                        <div className="p-3 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md shadow-rose-600/20">
-                          <span className="text-[11px] text-rose-100 font-medium block mb-0.5">Dự kiến hoàn thành lúc:</span>
-                          <span className="text-xl font-extrabold font-mono flex items-center gap-2 tracking-wide">
-                            <Flame className="w-5 h-5 text-amber-300 animate-pulse" />
-                            {displayEndTime}
-                          </span>
-                        </div>
-
-                        {/* Target Deadline & Duration */}
-                        <div className="p-3 rounded-xl bg-white/90 border border-slate-200/80 shadow-2xs">
-                          <span className="text-[11px] text-slate-500 font-medium block mb-0.5">Hạn chót bạn cần xong:</span>
-                          <span className="text-lg font-bold font-mono text-slate-700 flex items-center justify-between">
-                            <span>{userEndTime}</span>
-                            <span className="text-xs font-sans font-medium text-slate-400">(Tổng: ~{displayDuration}p)</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Explanation advice text */}
-                      <div className="text-xs leading-relaxed pt-1">
-                        {isInvalidTimeRange ? (
-                          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 space-y-1">
-                            <p className="font-bold flex items-center gap-1.5">
-                              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                              <span>Hạn chót không hợp lệ: Giờ bạn cần kết thúc ({userEndTime}) phải muộn hơn giờ bắt đầu ({userStartTime}).</span>
-                            </p>
-                            <p className="text-[11px] text-red-700 pl-5.5">
-                              Vui lòng điều chỉnh lại giờ cần kết thúc hoặc dời giờ bắt đầu sớm hơn để hệ thống tính toán chính xác.
-                            </p>
-                          </div>
-                        ) : currentDiff !== null ? (
-                          currentDiff > 0 ? (
-                            <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200/70 text-emerald-800 flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>
-                                <strong>An tâm tuyệt đối:</strong> Phương án này kết thúc lúc <strong>{displayEndTime}</strong>, giúp bạn có thêm <strong>{formatDiffText(currentDiff)}</strong> để chuẩn bị trang phục, chụp ảnh kỷ niệm và di chuyển thảnh thơi.
-                              </span>
-                            </div>
-                          ) : currentDiff === 0 ? (
-                            <div className="p-2.5 rounded-xl bg-teal-50/80 border border-teal-200/70 text-teal-800 flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
-                              <span>
-                                <strong>Lịch trình vừa vặn:</strong> Dịch vụ kết thúc chuẩn xác lúc <strong>{displayEndTime}</strong> đúng với hạn chót bạn yêu cầu.
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
-                              <p className="font-bold flex items-center gap-1.5">
-                                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                                <span>
-                                  Lưu ý: Thời gian làm dịch vụ (~{displayDuration} phút) sẽ kết thúc lúc {displayEndTime}, trễ hơn {formatDiffText(currentDiff)} so với giờ bạn cần ({userEndTime}).
-                                </span>
-                              </p>
-                              <p className="text-[11px] text-amber-800 pl-5.5">
-                                💡 <strong>Gợi ý:</strong> {isSingleClientSingleService ? 'Vui lòng điều chỉnh ô ' : 'Chọn phương án có nhiều chuyên viên hơn bên dưới để rút ngắn thời gian, hoặc điều chỉnh ô '}<em>"Bạn có thể bắt đầu lúc"</em> sớm hơn (gợi ý từ: <strong>{getRecommendedStartTime(userEndTime, currentPlan?.durationMinutes)}</strong>).
-                              </p>
-                            </div>
-                          )
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* 3 DISPATCH OPTIONS (MODEL 2: SAVING / BALANCED / SPEED) - CHỈ HIỂN THỊ KHI NHÓM >= 2 NGƯỜI HOẶC NHIỀU DỊCH VỤ */}
@@ -1604,7 +1472,14 @@ const BookingPage = () => {
                                     </span>
                                   )}
                                 </h4>
-                                <div className="flex items-baseline gap-1.5 mt-0.5">
+                                <p className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-1">
+                                  <span className="font-semibold text-slate-700">{opt.artistCount} chuyên viên</span>
+                                  <span>·</span>
+                                  <span className={opt.isLate ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+                                    Xong {opt.endTime?.substring(0, 5)} ({opt.durationMinutes}p)
+                                  </span>
+                                </p>
+                                <div className="flex items-baseline gap-1.5 mt-1">
                                   <span className="text-base font-extrabold text-rose-600 font-sans">
                                     {formatCurrency(opt.totalPrice)}
                                   </span>
@@ -1627,6 +1502,132 @@ const BookingPage = () => {
                         })}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* HERO LIVE CALCULATION RESULT BOX */}
+                {currentPlan && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-rose-50/60 via-purple-50/40 to-white border border-rose-200/80 shadow-xs space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-100/70 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-rose-600">
+                            {isSingleClientSingleService ? 'Kết Quả Tính Toán Hoàn Thành' : 'Kết Quả Tính Toán Hoàn Thành Cho Phương Án Đang Chọn'}
+                          </span>
+                          <h4 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                            <span>
+                              {isSingleClientSingleService
+                                ? (selectedServicesList[0]?.serviceName || 'Dịch vụ tiêu chuẩn')
+                                : (currentPlan.planName?.replace(/\s*\([^)]*\)/g, '') || currentPlan.planName)}
+                            </span>
+                            <span className="text-xs px-2.5 py-0.5 rounded-full font-sans font-bold bg-white text-rose-700 border border-rose-200 shadow-2xs">
+                              {isSingleClientSingleService ? '1 Chuyên Viên Phục Vụ' : `${currentPlan.artistCount} Chuyên Viên`}
+                            </span>
+                          </h4>
+                        </div>
+                      </div>
+
+                      {/* Status Diff Badge */}
+                      {timeValidationError ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-100 text-red-800 text-xs font-bold border border-red-200 shadow-2xs">
+                          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                          {timeValidationError}
+                        </span>
+                      ) : currentDiff !== null ? (
+                        currentDiff > 0 ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 shadow-2xs">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            Xong sớm hơn {formatDiffText(currentDiff)} so với hạn chót {userEndTime}!
+                          </span>
+                        ) : currentDiff === 0 ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-100 text-teal-800 text-xs font-bold border border-teal-200 shadow-2xs">
+                            <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+                            Kịp giờ hoàn hảo đúng hạn chót {userEndTime}!
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300 shadow-2xs">
+                            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                            Trễ hơn {formatDiffText(currentDiff)} so với hạn chót {userEndTime}!
+                          </span>
+                        )
+                      ) : null}
+                    </div>
+
+                    {/* Main Time Visual Display */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      {/* Start time */}
+                      <div className="p-3 rounded-xl bg-white/90 border border-slate-200/80 shadow-2xs">
+                        <span className="text-[11px] text-slate-500 font-medium block mb-0.5">Bắt đầu thực hiện:</span>
+                        <span className="text-lg font-bold font-mono text-slate-900 flex items-center gap-1.5">
+                          <Clock className="w-4 h-4 text-slate-500" />
+                          {displayStartTime}
+                        </span>
+                      </div>
+
+                      {/* Calculated End time (PROMINENT HIGHLIGHT) */}
+                      <div className="p-3 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md shadow-rose-600/20">
+                        <span className="text-[11px] text-rose-100 font-medium block mb-0.5">Dự kiến hoàn thành lúc:</span>
+                        <span className="text-xl font-extrabold font-mono flex items-center gap-2 tracking-wide">
+                          <Flame className="w-5 h-5 text-amber-300 animate-pulse" />
+                          {displayEndTime}
+                        </span>
+                      </div>
+
+                      {/* Target Deadline & Duration */}
+                      <div className="p-3 rounded-xl bg-white/90 border border-slate-200/80 shadow-2xs">
+                        <span className="text-[11px] text-slate-500 font-medium block mb-0.5">Hạn chót bạn cần xong:</span>
+                        <span className="text-lg font-bold font-mono text-slate-700 flex items-center justify-between">
+                          <span>{userEndTime}</span>
+                          <span className="text-xs font-sans font-medium text-slate-400">(Tổng: ~{displayDuration}p)</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Explanation advice text */}
+                    <div className="text-xs leading-relaxed pt-1">
+                      {isInvalidTimeRange ? (
+                        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 space-y-1">
+                          <p className="font-bold flex items-center gap-1.5">
+                            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                            <span>Hạn chót không hợp lệ: Giờ bạn cần kết thúc ({userEndTime}) phải muộn hơn giờ bắt đầu ({userStartTime}).</span>
+                          </p>
+                          <p className="text-[11px] text-red-700 pl-5.5">
+                            Vui lòng điều chỉnh lại giờ cần kết thúc hoặc dời giờ bắt đầu sớm hơn để hệ thống tính toán chính xác.
+                          </p>
+                        </div>
+                      ) : currentDiff !== null ? (
+                        currentDiff > 0 ? (
+                          <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200/70 text-emerald-800 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>
+                              <strong>An tâm tuyệt đối:</strong> Phương án này kết thúc lúc <strong>{displayEndTime}</strong>, giúp bạn có thêm <strong>{formatDiffText(currentDiff)}</strong> để chuẩn bị trang phục, chụp ảnh kỷ niệm và di chuyển thảnh thơi.
+                            </span>
+                          </div>
+                        ) : currentDiff === 0 ? (
+                          <div className="p-2.5 rounded-xl bg-teal-50/80 border border-teal-200/70 text-teal-800 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+                            <span>
+                              <strong>Lịch trình vừa vặn:</strong> Dịch vụ kết thúc chuẩn xác lúc <strong>{displayEndTime}</strong> đúng với hạn chót bạn yêu cầu.
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
+                            <p className="font-bold flex items-center gap-1.5">
+                              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>
+                                Lưu ý: Thời gian làm dịch vụ (~{displayDuration} phút) sẽ kết thúc lúc {displayEndTime}, trễ hơn {formatDiffText(currentDiff)} so với giờ bạn cần ({userEndTime}).
+                              </span>
+                            </p>
+                            <p className="text-[11px] text-amber-800 pl-5.5">
+                              💡 <strong>Gợi ý:</strong> {isSingleClientSingleService ? 'Vui lòng điều chỉnh ô ' : 'Chọn phương án có nhiều chuyên viên hơn bên trên để rút ngắn thời gian, hoặc điều chỉnh ô '}<em>"Bạn có thể bắt đầu lúc"</em> sớm hơn (gợi ý từ: <strong>{getRecommendedStartTime(userEndTime, currentPlan?.durationMinutes)}</strong>).
+                            </p>
+                          </div>
+                        )
+                      ) : null}
+                    </div>
                   </div>
                 )}
 

@@ -4,14 +4,78 @@ import {
   Search, RefreshCw, AlertCircle, Phone, User, 
   Sparkles, XCircle, Check, DollarSign,
   Landmark, Image as ImageIcon, ArrowDownLeft, Copy, ExternalLink,
-  Eye, X, ArrowRightLeft, ArrowUpDown, Palette
+  Eye, X, ArrowRightLeft, ArrowUpDown, Palette, AlertTriangle
 } from 'lucide-react';
 import { bookingService } from '../../services/bookingService';
 import { formatCurrency, formatTime, getStatusBadge, formatExecutionMode } from '../../utils/format';
 import { useToast } from '../../context/ToastContext';
 
+// Kiểm tra đơn đã quá thời gian hẹn nhưng chưa hoàn thành (và chưa bị hủy)
+export const isBookingOverdue = (b) => {
+  if (!b || !b.bookingDate) return false;
+
+  const isCancelled =
+    b.status === 'CANCELLED' ||
+    Boolean(
+      b.notes &&
+        (b.notes.includes('[Lý do hủy') ||
+          b.notes.includes('[HOÀN CỌC') ||
+          b.notes.includes('[ĐÃ HOÀN CỌC'))
+    );
+  const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
+  if (effectiveStatus === 'COMPLETED' || effectiveStatus === 'CANCELLED') {
+    return false;
+  }
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
+
+  // Nếu ngày hẹn đã trôi qua trước hôm nay
+  if (b.bookingDate < todayStr) {
+    return true;
+  }
+  // Nếu ngày hẹn ở tương lai
+  if (b.bookingDate > todayStr) {
+    return false;
+  }
+
+  // Nếu ngày hẹn là hôm nay: kiểm tra giờ kết thúc (hoặc giờ hẹn + 2 tiếng)
+  let endTimeStr = b.bookingTime ? String(b.bookingTime).slice(0, 5) : '';
+  if (Array.isArray(b.items) && b.items.length > 0) {
+    const validEndTimes = b.items
+      .map((it) => it.endTime && String(it.endTime).slice(0, 5))
+      .filter(Boolean);
+    if (validEndTimes.length > 0) {
+      validEndTimes.sort();
+      endTimeStr = validEndTimes[validEndTimes.length - 1];
+    }
+  }
+
+  if (!endTimeStr) {
+    if (b.bookingTime) {
+      const parts = String(b.bookingTime).split(':');
+      const h = Number(parts[0]) || 0;
+      const m = Number(parts[1]) || 0;
+      const endH = Math.min(23, h + 2);
+      endTimeStr = `${String(endH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    } else {
+      return false;
+    }
+  }
+
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const [endH, endM] = endTimeStr.split(':').map(Number);
+  const targetMinutes = (endH || 0) * 60 + (endM || 0);
+
+  return currentMinutes > targetMinutes;
+};
+
 const STATUS_FILTERS = [
   { key: 'ALL', label: 'Tất Cả' },
+  { key: 'OVERDUE', label: 'Quá Lịch Hẹn' },
   { key: 'CANCELLATION_REQUESTS', label: 'Yêu Cầu Đổi Thợ' },
   { key: 'REFUND_PENDING', label: 'Chờ Hoàn Cọc' },
   { key: 'CONFIRMED', label: 'Đã Xác Nhận' },
@@ -28,7 +92,8 @@ const AdminBookingsPage = () => {
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [sortBy, setSortBy] = useState('BOOKING_DATE_DESC');
+  const [sortField, setSortField] = useState('BOOKING_DATE'); // 'BOOKING_DATE' | 'CREATED_DATE'
+  const [sortOrder, setSortOrder] = useState('DESC'); // 'DESC' | 'ASC'
   const [updatingId, setUpdatingId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
   const [selectedBookingDetail, setSelectedBookingDetail] = useState(null);
@@ -317,7 +382,9 @@ const AdminBookingsPage = () => {
       const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
 
       // Tab filter
-      if (activeTab === 'REFUND_PENDING') {
+      if (activeTab === 'OVERDUE') {
+        if (!isBookingOverdue(b)) return false;
+      } else if (activeTab === 'REFUND_PENDING') {
         const isRefundPending = b.notes && b.notes.includes('[HOÀN CỌC') && !b.notes.includes('[ĐÃ HOÀN CỌC');
         if (!isRefundPending) return false;
       } else if (activeTab !== 'ALL' && effectiveStatus !== activeTab) {
@@ -358,45 +425,24 @@ const AdminBookingsPage = () => {
         return Number.isNaN(ms) ? 0 : ms;
       };
 
-      if (sortBy === 'BOOKING_DATE_ASC') {
-        const diff = getBookingTimestamp(a) - getBookingTimestamp(b);
+      const isAsc = sortOrder === 'ASC';
+
+      if (sortField === 'BOOKING_DATE') {
+        const diff = isAsc
+          ? getBookingTimestamp(a) - getBookingTimestamp(b)
+          : getBookingTimestamp(b) - getBookingTimestamp(a);
         if (diff !== 0) return diff;
-        return (Number(a.id) || 0) - (Number(b.id) || 0);
+        return isAsc ? (Number(a.id) || 0) - (Number(b.id) || 0) : (Number(b.id) || 0) - (Number(a.id) || 0);
       }
 
-      if (sortBy === 'BOOKING_DATE_DESC') {
-        const diff = getBookingTimestamp(b) - getBookingTimestamp(a);
-        if (diff !== 0) return diff;
-        return (Number(b.id) || 0) - (Number(a.id) || 0);
-      }
-
-      if (sortBy === 'UPCOMING_FIRST') {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const aIsUpcoming = (a.bookingDate || '') >= todayStr;
-        const bIsUpcoming = (b.bookingDate || '') >= todayStr;
-        if (aIsUpcoming !== bIsUpcoming) return aIsUpcoming ? -1 : 1;
-        if (aIsUpcoming) {
-          const diff = getBookingTimestamp(a) - getBookingTimestamp(b);
-          if (diff !== 0) return diff;
-        } else {
-          const diff = getBookingTimestamp(b) - getBookingTimestamp(a);
-          if (diff !== 0) return diff;
-        }
-        return (Number(b.id) || 0) - (Number(a.id) || 0);
-      }
-
-      if (sortBy === 'CREATED_ASC') {
-        const diff = getCreatedTimestamp(a) - getCreatedTimestamp(b);
-        if (diff !== 0) return diff;
-        return (Number(a.id) || 0) - (Number(b.id) || 0);
-      }
-
-      // CREATED_DESC: Đơn nào đặt sau thì hiện trước
-      const diffCreated = getCreatedTimestamp(b) - getCreatedTimestamp(a);
+      // CREATED_DATE: Sắp xếp theo ngày đặt đơn
+      const diffCreated = isAsc
+        ? getCreatedTimestamp(a) - getCreatedTimestamp(b)
+        : getCreatedTimestamp(b) - getCreatedTimestamp(a);
       if (diffCreated !== 0) return diffCreated;
-      return (Number(b.id) || 0) - (Number(a.id) || 0);
+      return isAsc ? (Number(a.id) || 0) - (Number(b.id) || 0) : (Number(b.id) || 0) - (Number(a.id) || 0);
     });
-  }, [bookings, activeTab, dateFilter, searchTerm, sortBy]);
+  }, [bookings, activeTab, dateFilter, searchTerm, sortField, sortOrder]);
 
   // Lọc danh sách yêu cầu hủy ca
   const filteredCancellationRequests = useMemo(() => {
@@ -419,22 +465,20 @@ const AdminBookingsPage = () => {
     }).sort((a, b) => {
       const dateA = a.bookingDate ? new Date(`${a.bookingDate}T${a.startTime || '00:00:00'}`).getTime() : 0;
       const dateB = b.bookingDate ? new Date(`${b.bookingDate}T${b.startTime || '00:00:00'}`).getTime() : 0;
-      if (sortBy === 'BOOKING_DATE_ASC' || sortBy === 'CREATED_ASC') {
-        return dateA - dateB;
-      }
-      return dateB - dateA;
+      return sortOrder === 'ASC' ? dateA - dateB : dateB - dateA;
     });
-  }, [cancellationRequests, dateFilter, searchTerm, sortBy]);
+  }, [cancellationRequests, dateFilter, searchTerm, sortField, sortOrder]);
 
   // Count per status
   const counts = useMemo(() => {
     const map = { ALL: bookings.length };
     const pendingCancelCount = cancellationRequests.filter((r) => r.cancelStatus === 'PENDING').length;
     map['CANCELLATION_REQUESTS'] = pendingCancelCount;
+    map['OVERDUE'] = bookings.filter((b) => isBookingOverdue(b)).length;
     STATUS_FILTERS.forEach((sf) => {
       if (sf.key === 'REFUND_PENDING') {
         map[sf.key] = bookings.filter((b) => b.notes?.includes('[HOÀN CỌC') && !b.notes?.includes('[ĐÃ HOÀN CỌC')).length;
-      } else if (sf.key !== 'ALL' && sf.key !== 'CANCELLATION_REQUESTS') {
+      } else if (sf.key !== 'ALL' && sf.key !== 'CANCELLATION_REQUESTS' && sf.key !== 'OVERDUE') {
         map[sf.key] = bookings.filter((b) => {
           const isCancelled = b.status === 'CANCELLED' || Boolean(b.notes && (b.notes.includes('[Lý do hủy') || b.notes.includes('[HOÀN CỌC') || b.notes.includes('[ĐÃ HOÀN CỌC')));
           const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
@@ -471,6 +515,25 @@ const AdminBookingsPage = () => {
         </button>
       </div>
 
+      {/* Alert banner if there are overdue bookings */}
+      {counts.OVERDUE > 0 && activeTab !== 'OVERDUE' && (
+        <div className="p-3.5 sm:p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-amber-200 text-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+            <span>
+              Phát hiện <strong>{counts.OVERDUE}</strong> đơn đặt lịch đã quá giờ/ngày hẹn nhưng chưa được cập nhật hoàn thành!
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('OVERDUE')}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 transition-colors shadow-sm cursor-pointer"
+          >
+            Lọc xem ngay
+          </button>
+        </div>
+      )}
+
       {/* Filter Tabs & Search Bar */}
       <div className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
         {/* Status Filter Tabs */}
@@ -478,20 +541,32 @@ const AdminBookingsPage = () => {
           {STATUS_FILTERS.map((tab) => {
             const isActive = activeTab === tab.key;
             const count = counts[tab.key] || 0;
+            const isOverdueTab = tab.key === 'OVERDUE';
             return (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`whitespace-nowrap px-4 py-2 rounded-2xl text-xs font-semibold transition-all duration-200 flex items-center gap-2 ${
                   isActive
-                    ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25'
+                    ? isOverdueTab
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-lg shadow-amber-500/25'
+                      : 'bg-rose-500 text-white shadow-lg shadow-rose-500/25'
+                    : isOverdueTab && count > 0
+                    ? 'bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 border border-amber-500/40'
                     : 'bg-slate-950/70 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800/80'
                 }`}
               >
+                {isOverdueTab && <AlertTriangle className={`w-3.5 h-3.5 ${isActive ? 'text-slate-950' : 'text-amber-400'}`} />}
                 <span>{tab.label}</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    isActive
+                      ? isOverdueTab
+                        ? 'bg-slate-950/20 text-slate-950'
+                        : 'bg-white/20 text-white'
+                      : isOverdueTab && count > 0
+                      ? 'bg-amber-500/25 text-amber-300'
+                      : 'bg-slate-800 text-slate-400'
                   }`}
                 >
                   {count}
@@ -518,31 +593,24 @@ const AdminBookingsPage = () => {
             <div className="relative flex-1">
               <ArrowUpDown className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-rose-400 pointer-events-none" />
               <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                value={sortField}
+                onChange={(e) => setSortField(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 transition-colors cursor-pointer"
-                title="Sắp xếp danh sách lịch đặt theo ngày"
+                title="Chọn tiêu chí sắp xếp danh sách lịch đặt"
               >
-                <option value="BOOKING_DATE_DESC">📅 Ngày hẹn: Mới → Cũ (Giảm dần)</option>
-                <option value="BOOKING_DATE_ASC">📅 Ngày hẹn: Cũ → Mới (Tăng dần)</option>
-                <option value="UPCOMING_FIRST">⚡ Ngày hẹn: Sắp diễn ra gần nhất</option>
-                <option value="CREATED_DESC">🕒 Ngày đặt đơn: Mới nhất trước</option>
-                <option value="CREATED_ASC">🕒 Ngày đặt đơn: Cũ nhất trước</option>
+                <option value="BOOKING_DATE">📅 Ngày hẹn</option>
+                <option value="CREATED_DATE">🕒 Ngày đặt</option>
               </select>
             </div>
             <button
               type="button"
-              onClick={() =>
-                setSortBy((prev) =>
-                  prev === 'BOOKING_DATE_ASC' ? 'BOOKING_DATE_DESC' : 'BOOKING_DATE_ASC'
-                )
-              }
+              onClick={() => setSortOrder((prev) => (prev === 'ASC' ? 'DESC' : 'ASC'))}
               className="px-3 py-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-rose-300 text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
-              title="Đảo chiều sắp xếp ngày hẹn (Tăng dần / Giảm dần)"
+              title="Đảo chiều sắp xếp (Tăng dần / Giảm dần)"
             >
               <ArrowUpDown className="w-3.5 h-3.5" />
               <span className="hidden lg:inline">
-                {sortBy === 'BOOKING_DATE_ASC' ? 'Tăng dần' : 'Giảm dần'}
+                {sortOrder === 'ASC' ? 'Tăng dần' : 'Giảm dần'}
               </span>
             </button>
           </div>
@@ -660,7 +728,9 @@ const AdminBookingsPage = () => {
           </div>
           <p className="text-white font-serif text-base font-semibold">Không tìm thấy đơn đặt lịch nào</p>
           <p className="text-slate-400 text-xs max-w-sm mx-auto">
-            {searchTerm || dateFilter || activeTab !== 'ALL'
+            {activeTab === 'OVERDUE'
+              ? 'Tuyệt vời! Không có đơn lịch đặt nào bị quá hạn chưa hoàn thành.'
+              : searchTerm || dateFilter || activeTab !== 'ALL'
               ? 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm để hiển thị kết quả.'
               : 'Hệ thống hiện tại chưa có đơn đặt lịch nào.'}
           </p>
@@ -672,6 +742,7 @@ const AdminBookingsPage = () => {
             const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
             const status = getStatusBadge(effectiveStatus);
             const isUpdating = updatingId === b.id;
+            const isOverdue = isBookingOverdue(b);
             const hasRefundRequest = Boolean(b.notes && (b.notes.includes('[HOÀN CỌC') || b.notes.includes('[ĐÃ HOÀN CỌC')));
             const isRefunded = Boolean(b.notes && b.notes.includes('[ĐÃ HOÀN CỌC'));
             const isPaid = Boolean(b.isFullyPaid || (b.remainingToCollect !== undefined && b.remainingToCollect <= 0) || (b.notes && b.notes.includes('[ĐÃ THU ĐỦ TIỀN')));
@@ -689,6 +760,8 @@ const AdminBookingsPage = () => {
                     ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-400'
                     : isRefunded
                     ? 'bg-slate-900/80 border-emerald-500/30'
+                    : isOverdue
+                    ? 'bg-amber-950/20 border-amber-500/50 hover:border-amber-400'
                     : 'bg-slate-900/70 border-slate-800/90 hover:border-slate-700'
                 }`}
               >
@@ -699,6 +772,12 @@ const AdminBookingsPage = () => {
                     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${status.color}`}>
                       {status.text}
                     </span>
+                    {isOverdue && (
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 animate-pulse">
+                        <AlertTriangle className="w-3 h-3 text-amber-400" />
+                        <span>Quá Lịch Hẹn</span>
+                      </span>
+                    )}
                     {hasRefundRequest && !isRefunded && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
                         <ArrowDownLeft className="w-3 h-3 text-amber-400" />
@@ -733,14 +812,32 @@ const AdminBookingsPage = () => {
                 {/* Main Compact Row: Customer, Services, Price & Amount to Collect, Actions */}
                 <div className="pt-3 grid grid-cols-1 md:grid-cols-12 gap-3 items-center text-xs">
                   {/* Customer Info */}
-                  <div className="md:col-span-3 space-y-1">
-                    <div className="flex items-center gap-1.5 text-white font-semibold">
-                      <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{b.customerName || 'Khách vãng lai'}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-                      <Phone className="w-3 h-3 text-slate-500 shrink-0" />
-                      <span>{b.customerPhone || 'Chưa cập nhật SĐT'}</span>
+                  <div className="md:col-span-3 flex items-center gap-2.5">
+                    {b.customerImage ? (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImage(b.customerImage)}
+                        className="w-10 h-10 rounded-xl overflow-hidden border border-slate-700 hover:border-rose-400 shrink-0 transition-all cursor-pointer relative group"
+                        title="Xem ảnh chân dung khuôn mặt khách hàng"
+                      >
+                        <img src={b.customerImage} alt="Ảnh mặt khách" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <ExternalLink className="w-3 h-3 text-white" />
+                        </div>
+                      </button>
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center shrink-0">
+                        <User className="w-4 h-4 text-slate-400" />
+                      </div>
+                    )}
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-1.5 text-white font-semibold">
+                        <span className="truncate">{b.customerName || 'Khách vãng lai'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                        <Phone className="w-3 h-3 text-slate-500 shrink-0" />
+                        <span>{b.customerPhone || 'Chưa cập nhật SĐT'}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -920,6 +1017,12 @@ const AdminBookingsPage = () => {
                       <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                         <span>Đã Hoàn Cọc</span>
+                      </span>
+                    )}
+                    {isBookingOverdue(b) && (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 animate-pulse">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Quá Lịch Hẹn (Chưa Hoàn Thành)</span>
                       </span>
                     )}
                   </div>
@@ -1292,7 +1395,7 @@ const AdminBookingsPage = () => {
       {/* Modal Preview Ảnh Chân Dung Khách Hàng */}
       {previewImage && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
           onClick={() => setPreviewImage(null)}
         >
           <div className="relative max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>

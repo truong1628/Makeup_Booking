@@ -22,6 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Service quản lý bộ sưu tập tác phẩm trang điểm (Portfolio / Lookbook)
+ * Xử lý tìm kiếm tác phẩm đa tiêu chí, tự động tăng lượt xem, lưu trữ ảnh phụ (gallery) và kiểm tra quyền sở hữu khi sửa/xóa.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

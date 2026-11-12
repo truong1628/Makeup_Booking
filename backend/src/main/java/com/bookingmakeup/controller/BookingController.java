@@ -25,6 +25,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Controller xử lý luồng đặt lịch hẹn trang điểm (Booking Workflow)
+ * Điều phối các phương án tự động, tạo đơn hẹn, hủy đơn, hoàn tiền cọc, xác nhận thanh toán và kiểm tra độ khả dụng của thợ.
+ */
 @RestController
 @RequestMapping("/api/v1/bookings")
 @RequiredArgsConstructor

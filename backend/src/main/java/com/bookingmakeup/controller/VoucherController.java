@@ -24,6 +24,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Controller quản lý mã khuyến mãi và ví voucher (Voucher / Promotion)
+ * Cung cấp API công khai cho khách hàng xem và áp dụng mã giảm giá, và API quản trị cho Admin quản lý CRUD voucher và tặng voucher cho khách.
+ */
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor

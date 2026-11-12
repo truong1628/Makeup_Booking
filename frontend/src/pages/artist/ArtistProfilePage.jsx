@@ -21,7 +21,7 @@ const ArtistProfilePage = () => {
     phone: '',
     avatar: '',
     experience: '',
-    workingHours: '08:00 - 20:00',
+    workingHours: 'Cả ngày',
     workingDays: 'Thứ 2 - Chủ Nhật',
     active: true,
   });
@@ -53,7 +53,7 @@ const ArtistProfilePage = () => {
         phone: data.phone || '',
         avatar: data.avatar || '',
         experience: data.experience || '',
-        workingHours: data.workingHours || '08:00 - 20:00',
+        workingHours: (data.workingHours && !/\d{2}:\d{2}/.test(data.workingHours)) ? data.workingHours : 'Cả ngày',
         workingDays: data.workingDays || 'Thứ 2 - Chủ Nhật',
         active: data.active !== undefined ? data.active : true,
       };
@@ -76,7 +76,7 @@ const ArtistProfilePage = () => {
       phone: profile.phone || '',
       avatar: profile.avatar || '',
       experience: profile.experience || '',
-      workingHours: profile.workingHours || '08:00 - 20:00',
+      workingHours: profile.workingHours || 'Cả ngày',
       workingDays: profile.workingDays || 'Thứ 2 - Chủ Nhật',
       active: profile.active !== false,
     });
@@ -377,7 +377,7 @@ const ArtistProfilePage = () => {
               <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80 flex items-center justify-between text-xs">
                 <span className="text-slate-400">Thời gian nhận hẹn:</span>
                 <span className="font-mono font-bold text-amber-400 text-sm">
-                  {profile.workingHours || '08:00 - 20:00'}
+                  {(profile.workingHours && !/\d{2}:\d{2}/.test(profile.workingHours)) ? profile.workingHours : 'Cả ngày'}
                 </span>
               </div>
             </div>
@@ -556,7 +556,7 @@ const ArtistProfilePage = () => {
                     name="workingHours"
                     value={editForm.workingHours}
                     onChange={handleEditChange}
-                    placeholder="08:00 - 20:00"
+                    placeholder="Cả ngày"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono"
                   />
                 </div>

@@ -7,16 +7,16 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 const MainLayout = () => {
-  const { user, isAuthenticated, logout, isAdmin, isArtist } = useAuth();
+  const { user, isAuthenticated, requestLogout, isAdmin, isArtist } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    logout();
     setUserDropdownOpen(false);
-    navigate('/');
+    setMobileMenuOpen(false);
+    requestLogout(() => navigate('/'));
   };
 
   const navLinks = [
@@ -48,7 +48,7 @@ const MainLayout = () => {
             <Link to="/" id="nav-brand-logo" className="flex items-center gap-3 group">
               <img
                 src="/logo.jpg"
-                alt="DungDorys Makeup Artist Logo"
+                alt="DungDorys Booking Makeup Logo"
                 className="w-12 h-12 rounded-full object-cover shadow-md shadow-rose-500/20 ring-2 ring-rose-200/90 group-hover:scale-105 group-hover:ring-rose-400 transition-all duration-300"
               />
               <div className="flex flex-col">
@@ -56,7 +56,7 @@ const MainLayout = () => {
                   Dung<span className="text-rose-600 italic">Dorys</span>
                 </span>
                 <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                  Makeup Artist
+                  Booking Makeup
                 </span>
               </div>
             </Link>
@@ -365,7 +365,7 @@ const MainLayout = () => {
               <div className="flex items-center gap-3">
                 <img
                   src="/logo.jpg"
-                  alt="DungDorys Makeup Artist Logo"
+                  alt="DungDorys Booking Makeup Logo"
                   className="w-12 h-12 rounded-full object-cover shadow-lg shadow-rose-500/25 ring-2 ring-rose-400/50"
                 />
                 <div className="flex flex-col">
@@ -373,12 +373,12 @@ const MainLayout = () => {
                     Dung<span className="text-rose-400 italic">Dorys</span>
                   </span>
                   <span className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">
-                    Makeup Artist
+                    Booking Makeup
                   </span>
                 </div>
               </div>
               <p className="text-sm text-slate-400 leading-relaxed">
-                DungDorys Makeup Artist - Hệ thống đặt lịch Makeup nghệ thuật hàng đầu. Tôn vinh nét đẹp độc bản và rạng rỡ của bạn trong mọi khoảnh khắc trọng đại.
+                DungDorys Booking Makeup - Hệ thống đặt lịch Makeup nghệ thuật hàng đầu. Tôn vinh nét đẹp độc bản và rạng rỡ của bạn trong mọi khoảnh khắc trọng đại.
               </p>
               <div className="flex items-center gap-3 text-xs text-rose-300">
                 <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />

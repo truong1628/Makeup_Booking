@@ -23,6 +23,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Service xử lý toàn bộ logic nghiệp vụ dịch vụ trang điểm đơn lẻ và gói combo (Makeup Service & Combo)
+ * Xử lý tính toán thời lượng combo, định giá, sắp xếp ưu tiên Combo và giá từ thấp đến cao, cập nhật và xóa mềm dịch vụ.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -55,6 +59,10 @@ public class MakeupServiceService {
         return idA.compareTo(idB);
     };
 
+    /**
+     * Lấy danh sách các dịch vụ đang hoạt động phục vụ khách hàng đặt lịch
+     * @param isCombo Tùy chọn lọc: true (chỉ combo), false (chỉ dịch vụ lẻ), null (lấy cả hai)
+     */
     @Transactional(readOnly = true)
     public List<MakeupServiceResponse> getActiveServices(Boolean isCombo) {
         List<MakeupService> services;
@@ -72,6 +80,9 @@ public class MakeupServiceService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Lấy danh sách toàn bộ các gói combo trang điểm đang hoạt động
+     */
     @Transactional(readOnly = true)
     public List<MakeupServiceResponse> getActiveCombos() {
         List<MakeupService> combos = makeupServiceRepository.findByActiveTrueAndIsComboTrue();
@@ -81,6 +92,9 @@ public class MakeupServiceService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Lấy thông tin chi tiết một dịch vụ hoặc gói combo theo ID (kèm danh sách dịch vụ con nếu là combo)
+     */
     @Transactional(readOnly = true)
     public MakeupServiceResponse getServiceById(Long id) {
         MakeupService service = makeupServiceRepository.findById(id)
@@ -88,6 +102,10 @@ public class MakeupServiceService {
         return mapToResponse(service);
     }
 
+    /**
+     * Tạo mới một dịch vụ trang điểm hoặc gói combo
+     * Kiểm tra ràng buộc combo phải có ít nhất 1 dịch vụ con, không được lồng combo trong combo và tự động tính tổng thời lượng.
+     */
     @Transactional
     public MakeupServiceResponse createService(ServiceCreateRequest request) {
         boolean isCombo = Boolean.TRUE.equals(request.getIsCombo());
@@ -174,6 +192,9 @@ public class MakeupServiceService {
         return response;
     }
 
+    /**
+     * Lấy toàn bộ danh sách dịch vụ trong hệ thống phục vụ trang quản trị Admin (bao gồm cả các dịch vụ đang tạm ẩn)
+     */
     @Transactional(readOnly = true)
     public List<MakeupServiceResponse> getAllServicesForAdmin() {
         return makeupServiceRepository.findAll().stream()
@@ -182,6 +203,9 @@ public class MakeupServiceService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Bật hoặc tắt trạng thái hoạt động (Active/Inactive) của dịch vụ
+     */
     @Transactional
     public MakeupServiceResponse toggleStatus(Long id) {
         MakeupService service = makeupServiceRepository.findById(id)
@@ -193,6 +217,10 @@ public class MakeupServiceService {
         return mapToResponse(updated);
     }
 
+    /**
+     * Cập nhật thông tin dịch vụ hoặc gói combo
+     * Nếu là combo: xóa và cập nhật lại danh sách dịch vụ thành phần và tính toán lại thời lượng nếu cần.
+     */
     @Transactional
     public MakeupServiceResponse updateService(Long id, ServiceCreateRequest request) {
         MakeupService service = makeupServiceRepository.findById(id)
@@ -245,6 +273,9 @@ public class MakeupServiceService {
         return mapToResponse(updated);
     }
 
+    /**
+     * Xóa mềm (Soft Delete) dịch vụ bằng cách chuyển trạng thái active = false để đảm bảo an toàn lịch sử đơn đặt lịch
+     */
     @Transactional
     public void deleteService(Long id) {
         MakeupService service = makeupServiceRepository.findById(id)

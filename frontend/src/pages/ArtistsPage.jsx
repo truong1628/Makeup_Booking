@@ -121,7 +121,7 @@ const ArtistsPage = () => {
                   <div className="pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-600">
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span>Giờ nhận lịch: {artist.workingHours || '08:00 - 20:00'}</span>
+                      <span>Giờ nhận lịch: {artist.workingHours && !/\d{2}:\d{2}/.test(artist.workingHours) ? artist.workingHours : 'Cả ngày'}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
@@ -171,11 +171,11 @@ const ArtistsPage = () => {
                 Đặt Lịch Hẹn Ngay
               </Link>
               <a
-                href="tel:0901234567"
+                href="tel:0988776655"
                 className="px-6 py-3 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20 text-white font-semibold text-xs transition-all flex items-center gap-2"
               >
                 <Phone className="w-3.5 h-3.5" />
-                <span>Hotline: 090 123 4567</span>
+                <span>Hotline: 0988 776 655</span>
               </a>
             </div>
           </div>

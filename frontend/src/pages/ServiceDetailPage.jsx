@@ -53,6 +53,150 @@ const DEFAULT_REVIEWS = [
   }
 ];
 
+const getServiceExtendedDetails = (service) => {
+  const name = (service?.serviceName || '').toLowerCase();
+  const isCombo = Boolean(service?.isCombo);
+  const baseDesc = (service?.description || '').trim();
+
+  if (isCombo || name.includes('combo')) {
+    return {
+      overview:
+        (baseDesc ? `${baseDesc}. ` : '') +
+        'Gói dịch vụ trọn gói kết hợp đồng bộ từ bước chăm sóc phục hồi da chuyên sâu, đánh nền HD căng bóng bền màu, gắn mi thiết kế 3D đến tạo kiểu tóc và cài phụ kiện cao cấp. Chuyên viên sẽ tư vấn trực tiếp theo dáng khuôn mặt, tông da và trang phục để mang lại tổng thể hài hòa, nổi bật nhất.',
+      highlights: [
+        'Làm sạch, cấp ẩm sâu & khóa nền bền màu suốt 14–16 giờ không xuống tone',
+        'Thiết kế layout trang điểm mắt, khối mũi & màu môi cá nhân hóa theo váy cưới/trang phục',
+        'Tặng kèm mi lụa thiết kế siêu nhẹ & tạo kiểu tóc trọn gói kèm phụ kiện cài tóc cao cấp',
+        'Hỗ trợ kiểm tra ánh sáng chụp hình & dặm lại hoàn thiện trước khi bàn giao'
+      ],
+      suitableFor: ['Lễ ăn hỏi & Lễ cưới', 'Tiệc cưới nhà hàng', 'Chụp ảnh Pre-wedding', 'Sự kiện trọng đại'],
+      prepTips: [
+        'Dưỡng ẩm nhẹ nhàng và tẩy tế bào chết môi vào tối hôm trước để lớp nền và son bám mịn nhất.',
+        'Gội đầu khô sạch trước buổi hẹn (tránh ủ dầu xả quá sát chân tóc) giúp tóc giữ nếp bồng bềnh lâu hơn.',
+        'Ưu tiên mặc áo cài nút hoặc áo cổ rộng để thuận tiện thay trang phục sau khi làm xong tóc và makeup.'
+      ]
+    };
+  }
+
+  if (name.includes('cô dâu') && !name.includes('mẹ') && !name.includes('tóc')) {
+    return {
+      overview:
+        (baseDesc ? `${baseDesc}. ` : '') +
+        'Dịch vụ trang điểm cô dâu cao cấp tập trung vào kỹ thuật nền trong veo căng bóng hoặc sang trọng sắc sảo tùy theo phong cách tiệc ngày hay tiệc tối. Sử dụng 100% mỹ phẩm high-end chống thấm nước, chống mồ hôi giúp cô dâu tự tin rạng rỡ dưới ánh đèn sân khấu và ống kính máy ảnh.',
+      highlights: [
+        'Kỹ thuật đánh nền mỏng nhẹ đa tầng, che phủ khuyết điểm hoàn hảo mà không dày cộm',
+        'Chống nước, chống lem trôi suốt 16 giờ liên tục trong điều kiện ngoài trời hoặc phòng tiệc',
+        'Tặng kèm mi lụa chùm thiết kế tự nhiên giúp đôi mắt to tròn, có chiều sâu',
+        'Tư vấn màu son, má hồng và kiểu đánh khối hài hòa với áo dài / váy cưới'
+      ],
+      suitableFor: ['Lễ rước dâu buổi sáng', 'Tiệc cưới buổi tối', 'Lễ đính hôn', 'Chụp hình cưới'],
+      prepTips: [
+        'Ngủ đủ giấc và hạn chế uống nhiều nước sát giờ đi ngủ để tránh sưng mắt sáng hôm sau.',
+        'Làm sạch mặt, thoa toner/kem dưỡng dịu nhẹ trước khi chuyên viên đến.',
+        'Chuẩn bị sẵn ảnh váy cưới hoặc áo dài để chuyên viên phối tone màu chuẩn nhất.'
+      ]
+    };
+  }
+
+  if (name.includes('tóc')) {
+    return {
+      overview:
+        (baseDesc ? `${baseDesc}. ` : '') +
+        'Dịch vụ tạo kiểu tóc chuyên nghiệp mang đến mái tóc bồng bềnh, vào nếp tự nhiên từ phong cách búi thấp Hàn Quốc thanh lịch, búi cao hoàng gia sang trọng đến uốn sóng lơi nữ tính. Đã bao gồm kỹ thuật xử lý phồng chân tóc, che khuyết điểm trán/thái dương và hỗ trợ cài phụ kiện.',
+      highlights: [
+        'Tạo kiểu đa dạng: Búi thấp thanh lịch, uốn sóng nước, tết vương miện hoặc buộc nửa đầu',
+        'Sử dụng dưỡng nhiệt & keo xịt giữ nếp cao cấp không gây bết cứng hay khô xơ tóc',
+        'Hỗ trợ cài voan, trâm cài, kẹp ngọc trai hoặc hoa tươi đồng bộ trang phục',
+        'Cố định chắc chắn, giữ form tóc đẹp suốt 12–16 giờ vận động'
+      ],
+      suitableFor: ['Cô dâu ngày cưới', 'Dự tiệc sang trọng', 'Chụp ảnh ngoại cảnh', 'Sự kiện thảm đỏ'],
+      prepTips: [
+        'Nên gội đầu sạch từ tối hôm trước và sấy khô hoàn toàn, tránh dùng tinh dầu dưỡng làm trơn khó giữ nếp.',
+        'Nếu muốn gắn thêm tóc nối/tóc giả hoặc phụ kiện riêng, hãy mang theo để chuyên viên phối hợp.',
+        'Mặc áo cài cúc hoặc áo cổ rộng để không làm rối kiểu tóc khi thay đồ.'
+      ]
+    };
+  }
+
+  if (name.includes('mi') || name.includes('chăm sóc da')) {
+    return {
+      overview:
+        (baseDesc ? `${baseDesc}. ` : '') +
+        'Liệu trình kết hợp chuẩn bị làn da căng mọng (Skin-Prep) trước khi trang điểm cùng kỹ thuật nối/gắn mi tơi 3D thủ công từng sợi. Giúp làm dịu vùng da khô bong tróc, khóa ẩm tức thì để lớp nền bám chặt mịn mượt và đôi mắt có hàng mi cong tự nhiên đầy cuốn hút.',
+      highlights: [
+        'Làm sạch dịu nhẹ, đắp mặt nạ cấp ẩm phục hồi tức thì (Hydra-Glow) chống mốc nền',
+        'Massage thư giãn nâng cơ nhẹ vùng mặt và mắt giúp giảm bọng mắt, da ăn phấn hơn',
+        'Gắn mi chùm / mi lụa 3D siêu nhẹ tùy chỉnh độ dày, độ dài phù hợp từng dáng mắt',
+        'Sử dụng keo dán chuyên dụng an toàn, êm dịu cho mắt nhạy cảm và người đeo lens'
+      ],
+      suitableFor: ['Da khô dễ mốc nền', 'Người có hàng mi thưa ngắn', 'Bước đệm trước tiệc', 'Mắt nhạy cảm'],
+      prepTips: [
+        'Để mặt mộc hoàn toàn và không chuốt mascara trước khi thực hiện.',
+        'Nếu bạn đeo kính áp tròng (lens), hãy đeo lens trước khi gắn mi để đảm bảo vệ sinh và thoải mái.',
+        'Thông báo cho chuyên viên nếu da bạn có tiền sử dị ứng với thành phần mỹ phẩm nào.'
+      ]
+    };
+  }
+
+  if (name.includes('mẹ')) {
+    return {
+      overview:
+        (baseDesc ? `${baseDesc}. ` : '') +
+        'Phong cách trang điểm dành riêng cho Mẹ Cô dâu / Mẹ Chú rể với tiêu chí thanh lịch, quý phái và tôn vinh nét đẹp phúc hậu tự nhiên. Kỹ thuật nền mỏng mịn giúp làm mờ nếp nhăn vùng đuôi mắt, rãnh cười mà không bị dày phấn hay lộ vân da.',
+      highlights: [
+        'Kỹ thuật nâng cơ mắt & đánh nền mỏng nhẹ, không đọng phấn vào rãnh nhăn',
+        'Tông màu trang nhã (cam đất, hồng trầm, đỏ rượu nhẹ) sang trọng và bắt sáng tốt',
+        'Tạo khối nhẹ hài hòa gương mặt, giữ nét tự nhiên, đằm thắm khi tiếp khách và chụp ảnh',
+        'Độ bền màu cao suốt cả ngày dài tổ chức hôn lễ mà vẫn thoáng nhẹ dễ chịu'
+      ],
+      suitableFor: ['Mẹ Cô dâu ngày cưới', 'Mẹ Chú rể lễ ăn hỏi', 'Lễ mừng thọ / Tiệc gia đình', 'Chụp ảnh kỷ niệm'],
+      prepTips: [
+        'Dưỡng ẩm da kỹ vào buổi tối trước ngày cưới giúp da mềm mịn và căng bóng hơn.',
+        'Chuẩn bị trước áo dài và trang sức (hoa tai, vòng cổ) để chuyên viên phối tone son hài hòa.',
+        'Nếu đeo kính khi đi lại hoặc đọc bài phát biểu, báo trước để chuyên viên điều chỉnh độ dài mi phù hợp.'
+      ]
+    };
+  }
+
+  if (name.includes('hóa trang') || name.includes('cosplay') || name.includes('concept')) {
+    return {
+      overview:
+        (baseDesc ? `${baseDesc}. ` : '') +
+        'Dịch vụ trang điểm hóa trang & Concept nghệ thuật dành cho các buổi chụp hình thời trang, lễ hội Halloween, cổ trang, Cosplay hoặc biểu diễn sân khấu. Chuyên viên sử dụng bảng màu pigment chuyên dụng và kỹ thuật vẽ chi tiết sắc nét để biến hóa nhân vật ấn tượng, chân thực nhất.',
+      highlights: [
+        'Thiết kế layout sáng tạo theo đúng nhân vật, chủ đề hoặc hình ảnh tham khảo riêng',
+        'Sử dụng màu vẽ chuyên nghiệp (Face & Body Paint / SFX) an toàn cho da và lên màu chuẩn nét',
+        'Kỹ thuật tạo khối 3D góc cạnh, nhấn mắt ấn tượng, đính đá/kim tuyến hoặc hiệu ứng đặc biệt',
+        'Bền màu cực cao dưới ánh đèn studio, đèn sân khấu và hoạt động ngoài trời'
+      ],
+      suitableFor: ['Chụp ảnh Concept / Editorial', 'Lễ hội Halloween / Tiệc hóa trang', 'Cosplay nhân vật', 'Biểu diễn nghệ thuật'],
+      prepTips: [
+        'Gửi trước hình ảnh nhân vật hoặc moodboard tham khảo ở Bước 4 để chuyên viên chuẩn bị dụng cụ chuyên biệt.',
+        'Thử trước kính áp tròng màu (nếu có) và dưỡng ẩm da kỹ trước khi vẽ hóa trang.',
+        'Chuẩn bị sẵn nước tẩy trang chuyên dụng hoặc dầu tẩy trang sau khi kết thúc sự kiện.'
+      ]
+    };
+  }
+
+  return {
+    overview:
+      (baseDesc ? `${baseDesc}. ` : '') +
+      'Dịch vụ trang điểm chuyên nghiệp tại DungDorys tôn vinh đường nét tự nhiên, định hình phong cách cá nhân hóa theo cấu trúc khuôn mặt và bối cảnh sự kiện. Cam kết sử dụng 100% mỹ phẩm chính hãng cao cấp cho lớp nền mịn mượt, lâu trôi suốt cả ngày.',
+    highlights: [
+      'Phân tích cấu trúc gương mặt & undertone da để lựa chọn layout hài hòa nhất',
+      'Kỹ thuật đánh nền căng bóng mỏng nhẹ, che khuyết điểm tự nhiên và kiềm dầu tốt',
+      'Tặng kèm mi lụa tự nhiên và hỗ trợ dặm phấn hoàn thiện trước khi ra về',
+      'Linh hoạt thực hiện nhiều phong cách: Hàn Quốc trong veo, Thái sắc sảo, Âu Mỹ quyến rũ'
+    ],
+    suitableFor: ['Dự tiệc & Sự kiện', 'Chụp ảnh Kỷ yếu', 'Sinh nhật / Tốt nghiệp', 'Chụp hình Beauty'],
+    prepTips: [
+      'Rửa mặt sạch và dưỡng ẩm cơ bản trước giờ hẹn 30 phút để lớp nền ăn da hơn.',
+      'Mang theo ảnh trang phục dự kiến để chuyên viên tư vấn màu mắt và son phù hợp.',
+      'Chủ động trao đổi phong cách yêu thích hoặc khuyết điểm muốn che với chuyên viên.'
+    ]
+  };
+};
+
 const ServiceDetailPage = () => {
   const { id } = useParams();
   const { user, isAuthenticated } = useAuth();
@@ -267,6 +411,8 @@ const ServiceDetailPage = () => {
         })
     : [];
 
+  const extendedDetails = getServiceExtendedDetails(service);
+
   return (
     <div className="space-y-16 pb-24">
       {/* Breadcrumb Navigation */}
@@ -395,31 +541,55 @@ const ServiceDetailPage = () => {
             </h1>
 
             {/* Price Presentation */}
-            <div className="p-5 rounded-2xl bg-gradient-to-r from-rose-50/80 via-pink-50/40 to-amber-50/50 border border-rose-100/80 flex items-baseline justify-between">
-              <div>
-                <span className="text-xs text-slate-500 font-medium block">Chi phí trọn gói dịch vụ</span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-sans text-3xl sm:text-4xl font-bold text-rose-600">
-                    {formatCurrency(service.price)}
-                  </span>
-                  <span className="text-xs text-slate-400">/ buổi</span>
-                </div>
-              </div>
-
-              <div className="text-right">
-                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-1 rounded-full inline-block">
-                  Tiền cọc 30%: {formatCurrency(Math.round(service.price * 0.3))}
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-rose-50/80 via-pink-50/40 to-amber-50/50 border border-rose-100/80">
+              <span className="text-xs text-slate-500 font-medium block">Chi phí trọn gói dịch vụ</span>
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="font-sans text-3xl sm:text-4xl font-bold text-rose-600">
+                  {formatCurrency(service.price)}
                 </span>
-                <p className="text-[10px] text-slate-400 mt-1">Thanh toán cọc bảo đảm slot hẹn</p>
+                <span className="text-xs text-slate-400">/ buổi</span>
               </div>
             </div>
 
-            {/* Description Paragraph */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mô tả dịch vụ</h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                {service.description || 'Dịch vụ trang điểm chuyên nghiệp tôn vinh đường nét tự nhiên, định hình phong cách sang trọng và bảo đảm lớp nền bền mịn suốt cả ngày dài.'}
-              </p>
+            {/* Description & Detailed Breakdown */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mô tả chi tiết dịch vụ</h3>
+                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+                  {extendedDetails.overview}
+                </p>
+              </div>
+
+              {/* Hạng mục & Quyền lợi nổi bật */}
+              <div className="p-4 rounded-2xl bg-slate-50/90 border border-slate-100 space-y-2.5">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Điểm nổi bật & Quyền lợi bao gồm</span>
+                </h4>
+                <ul className="space-y-2">
+                  {extendedDetails.highlights.map((item, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-xs text-slate-600 leading-relaxed">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Phù hợp cho dịp */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+                  Phù hợp cho:
+                </span>
+                {extendedDetails.suitableFor.map((tag, idx) => (
+                  <span
+                    key={idx}
+                    className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 text-[11px] font-medium border border-rose-100"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
             </div>
 
             {/* Combo Included Items (if combo) */}
@@ -489,6 +659,36 @@ const ServiceDetailPage = () => {
               </p>
             </div>
 
+          </div>
+        </div>
+      </section>
+
+      {/* Preparation Tips & Policy Note */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-rose-50/70 via-white to-amber-50/60 border border-rose-100 shadow-2xs">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-1.5 max-w-sm">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-rose-600">
+                Mẹo Nhỏ Dành Cho Bạn
+              </span>
+              <h3 className="text-lg font-bold text-slate-900">
+                Chuẩn Bị Trước Giờ Hẹn
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Một vài lưu ý nhỏ giúp lớp trang điểm ăn da hơn, giữ nếp tóc lâu hơn và tiết kiệm tối đa thời gian thực hiện.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1">
+              {extendedDetails.prepTips.map((tip, idx) => (
+                <div key={idx} className="p-4 rounded-2xl bg-white border border-slate-100 shadow-2xs space-y-1.5">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-rose-100 text-rose-600 font-bold text-xs">
+                    {idx + 1}
+                  </span>
+                  <p className="text-xs text-slate-600 leading-relaxed">{tip}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>

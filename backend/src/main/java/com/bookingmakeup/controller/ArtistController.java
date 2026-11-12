@@ -43,6 +43,10 @@ import java.math.BigDecimal;
 
 import com.bookingmakeup.service.BookingService;
 
+/**
+ * Controller dành riêng cho Chuyên viên trang điểm (Makeup Artist Workspace)
+ * Quản lý ca làm việc được giao, cập nhật trạng thái làm việc, xác nhận thu tiền, đăng ký ngày nghỉ và quản lý tác phẩm bộ sưu tập cá nhân.
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/artist")
@@ -66,7 +70,8 @@ public class ArtistController {
     }
 
     /**
-     * Cập nhật trạng thái ca làm việc (Chuyên gia bắt đầu thực hiện / hoàn thành)
+     * Artist API: Cập nhật trạng thái ca làm việc (Bắt đầu thực hiện / Hoàn thành ca)
+     * Ràng buộc: Đối với trạng thái COMPLETED, hệ thống bắt buộc đơn hàng phải đã thu đủ tiền từ khách hàng.
      */
     @PatchMapping("/assignments/{bookingId}/status")
     public ApiResponse<Map<String, Object>> updateAssignmentStatus(
@@ -105,7 +110,8 @@ public class ArtistController {
     }
 
     /**
-     * Chuyên gia xác nhận đã thu tiền từ khách hàng
+     * Artist API: Chuyên viên xác nhận đã thu đủ số tiền còn lại từ khách hàng (bằng tiền mặt)
+     * Tự động sinh bản ghi Payment và đánh dấu ghi chú [ĐÃ THU ĐỦ TIỀN] vào đơn đặt lịch.
      */
     @PostMapping("/assignments/{bookingId}/collect-payment")
     @Transactional
@@ -154,7 +160,8 @@ public class ArtistController {
     }
 
     /**
-     * 1. Thợ lấy danh sách các ca làm việc (Assignments) được phân bổ cho mình
+     * Artist API: Lấy danh sách toàn bộ ca làm việc (Assignments) được phân bổ cho chuyên viên
+     * Trả về thông tin khách hàng, dịch vụ, địa chỉ thực hiện, thời gian, số tiền cần thu và trạng thái đơn.
      */
     @GetMapping("/assignments")
     @Transactional(readOnly = true)
@@ -186,13 +193,20 @@ public class ArtistController {
             List<Payment> payments = paymentRepository.findByBookingId(booking.getId());
             BigDecimal totalPaid = BigDecimal.ZERO;
             String paymentMethod = "CASH";
+            boolean hasVnpay = false;
             for (Payment p : payments) {
                 if (p.getStatus() == PaymentStatus.PAID) {
                     totalPaid = totalPaid.add(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
                 }
-                if (p.getPaymentMethod() != null) {
+                if (p.getPaymentMethod() == com.bookingmakeup.enums.PaymentMethod.VNPAY) {
+                    hasVnpay = true;
+                }
+                if (!hasVnpay && p.getPaymentMethod() != null) {
                     paymentMethod = p.getPaymentMethod().name();
                 }
+            }
+            if (hasVnpay) {
+                paymentMethod = com.bookingmakeup.enums.PaymentMethod.VNPAY.name();
             }
 
             BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
@@ -208,9 +222,12 @@ public class ArtistController {
             map.put("remainingToCollect", remainingToCollect);
             map.put("paymentMethod", paymentMethod);
 
-            // Thông tin khách hàng
+            // Thông tin khách hàng & yêu cầu trang điểm
             map.put("customerName", booking.getUser().getFullName());
             map.put("customerPhone", booking.getUser().getPhone());
+            map.put("customerImage", booking.getCustomerImage());
+            map.put("layout", booking.getMakeupLayout() != null ? booking.getMakeupLayout().getName() : booking.getLayout());
+            map.put("notes", booking.getNotes());
 
             // Địa chỉ nếu làm tại nhà
             Optional<BookingAddress> addrOpt = bookingAddressRepository.findByBookingId(booking.getId());
@@ -218,7 +235,7 @@ public class ArtistController {
                 map.put("address", addrOpt.get().getAddress());
                 map.put("distanceKm", addrOpt.get().getDistanceKm());
             } else {
-                map.put("address", "Tại Studio DungDorys (120 Phố Huế, Q. Hai Bà Trưng)");
+                map.put("address", "Tại Studio DungDorys (204 Trần Duy Hưng, Q. Cầu Giấy, Hà Nội)");
                 map.put("distanceKm", 0);
             }
 
@@ -245,8 +262,8 @@ public class ArtistController {
     }
 
     /**
-     * Thợ yêu cầu hủy ca làm việc (gửi lý do chờ Admin duyệt để đổi thợ khác)
-     * Ràng buộc: Chỉ được yêu cầu trước giờ bắt đầu ít nhất 2 tiếng.
+     * Artist API: Chuyên viên gửi yêu cầu hủy ca làm việc lên Quản trị viên (chờ duyệt và đổi thợ khác)
+     * Ràng buộc nghiệp vụ: Bắt buộc gửi trước giờ bắt đầu làm ít nhất 2 tiếng và ca chưa bị hủy/hoàn thành.
      */
     @PostMapping("/assignments/{itemId}/request-cancel")
     @Transactional
@@ -318,7 +335,7 @@ public class ArtistController {
     }
 
     /**
-     * 2. Lấy danh sách lịch làm việc và ngày nghỉ của cá nhân thợ
+     * Artist API: Lấy danh sách lịch trình làm việc và các ngày đã đăng ký nghỉ phép của chuyên viên
      */
     @GetMapping("/schedules")
     @Transactional(readOnly = true)
@@ -329,7 +346,8 @@ public class ArtistController {
     }
 
     /**
-     * 3. Thợ tự đăng ký ngày nghỉ phép (Khóa slot không cho khách đặt trùng vào ngày đó)
+     * Artist API: Chuyên viên tự đăng ký ngày nghỉ phép
+     * Hệ thống tự động khóa toàn bộ slot nhận khách của thợ trong ngày đã chọn để ngăn đặt lịch trùng.
      */
     @PostMapping("/schedules/day-off")
     @Transactional
@@ -355,8 +373,8 @@ public class ArtistController {
             schedule = ArtistSchedule.builder()
                     .makeupArtist(artist)
                     .scheduleDate(date)
-                    .startTime(LocalTime.of(8, 0))
-                    .endTime(LocalTime.of(20, 0))
+                    .startTime(LocalTime.of(0, 0))
+                    .endTime(LocalTime.of(23, 59, 59))
                     .isDayOff(true)
                     .build();
         }
@@ -368,7 +386,7 @@ public class ArtistController {
     }
 
     /**
-     * 4. Xem thông tin hồ sơ nghệ sĩ
+     * Artist API: Xem thông tin hồ sơ chuyên viên trang điểm
      */
     @GetMapping("/profile")
     @Transactional(readOnly = true)
@@ -391,7 +409,7 @@ public class ArtistController {
     }
 
     /**
-     * 5. Cập nhật hồ sơ cá nhân của thợ
+     * Artist API: Cập nhật thông tin hồ sơ chuyên môn của chuyên viên (kinh nghiệm, giờ làm việc, trạng thái nhận khách)
      */
     @PutMapping("/profile")
     @Transactional
@@ -427,7 +445,7 @@ public class ArtistController {
     }
 
     /**
-     * 6. Nghệ sĩ lấy danh sách các tác phẩm trong bộ sưu tập của mình
+     * Artist API: Lấy danh sách các tác phẩm trong bộ sưu tập (Portfolio) do chính chuyên viên tạo
      */
     @GetMapping("/portfolios")
     public ApiResponse<List<PortfolioResponse>> getMyPortfolios(@AuthenticationPrincipal UserPrincipal currentUser) {
@@ -436,7 +454,7 @@ public class ArtistController {
     }
 
     /**
-     * 7. Nghệ sĩ đăng tải tác phẩm mới lên bộ sưu tập
+     * Artist API: Chuyên viên đăng tải tác phẩm trang điểm mới vào bộ sưu tập cá nhân
      */
     @PostMapping("/portfolios")
     public ApiResponse<PortfolioResponse> createPortfolio(
@@ -448,7 +466,7 @@ public class ArtistController {
     }
 
     /**
-     * 8. Nghệ sĩ cập nhật tác phẩm trong bộ sưu tập
+     * Artist API: Chuyên viên chỉnh sửa thông tin hoặc cập nhật hình ảnh tác phẩm trong bộ sưu tập
      */
     @PutMapping("/portfolios/{id}")
     public ApiResponse<PortfolioResponse> updatePortfolio(
@@ -461,7 +479,7 @@ public class ArtistController {
     }
 
     /**
-     * 9. Nghệ sĩ xóa tác phẩm khỏi bộ sưu tập
+     * Artist API: Chuyên viên xóa tác phẩm khỏi bộ sưu tập của mình
      */
     @DeleteMapping("/portfolios/{id}")
     public ApiResponse<Void> deletePortfolio(

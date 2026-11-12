@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authStorage } from '../utils/authStorage';
 import { authService } from '../services/authService';
+import LogoutConfirmModal from '../components/LogoutConfirmModal';
 
 const AuthContext = createContext(null);
 
@@ -8,6 +9,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(authStorage.getUser());
   const [token, setToken] = useState(authStorage.getToken());
   const [loading, setLoading] = useState(true);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [logoutCallback, setLogoutCallback] = useState(null);
 
   useEffect(() => {
     const savedUser = authStorage.getUser();
@@ -37,6 +40,27 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
   };
 
+  const requestLogout = useCallback((onConfirmed) => {
+    setLogoutCallback(() => onConfirmed || null);
+    setShowLogoutModal(true);
+  }, []);
+
+  const handleConfirmLogout = useCallback(() => {
+    authStorage.clearAuth();
+    setUser(null);
+    setToken(null);
+    setShowLogoutModal(false);
+    if (typeof logoutCallback === 'function') {
+      logoutCallback();
+    }
+    setLogoutCallback(null);
+  }, [logoutCallback]);
+
+  const handleCancelLogout = useCallback(() => {
+    setShowLogoutModal(false);
+    setLogoutCallback(null);
+  }, []);
+
   const updateUser = (updatedData) => {
     const updated = { ...user, ...updatedData };
     setUser(updated);
@@ -63,10 +87,16 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        requestLogout,
         updateUser,
       }}
     >
       {children}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        onConfirm={handleConfirmLogout}
+        onCancel={handleCancelLogout}
+      />
     </AuthContext.Provider>
   );
 };

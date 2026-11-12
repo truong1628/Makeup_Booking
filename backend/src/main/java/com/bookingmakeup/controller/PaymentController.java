@@ -13,6 +13,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+/**
+ * Controller xử lý thanh toán trực tuyến và ngoại tuyến cho đơn đặt lịch
+ * Tích hợp cổng thanh toán VNPay (tạo URL, IPN Webhook, Return URL), thanh toán tiền mặt tại Studio và gửi email hóa đơn.
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/payments")
@@ -23,7 +27,7 @@ public class PaymentController {
     private final com.bookingmakeup.service.EmailService emailService;
 
     /**
-     * Endpoint kiểm tra gửi email trực tiếp tới hộp thư chỉ định
+     * Development API: Kiểm tra trực tiếp khả năng gửi email xác nhận tới hòm thư chỉ định
      */
     @GetMapping("/test-email")
     public ApiResponse<String> testEmail(@RequestParam String to) {
@@ -32,7 +36,7 @@ public class PaymentController {
     }
 
     /**
-     * Kích hoạt gửi email xác nhận đặt lịch cho đơn hàng cụ thể
+     * Internal API: Kích hoạt gửi email xác nhận đặt lịch thành công cho một đơn hàng cụ thể
      */
     @GetMapping("/send-confirmation-email/{bookingId}")
     public ApiResponse<String> sendConfirmationEmail(@PathVariable Long bookingId) {
@@ -41,7 +45,8 @@ public class PaymentController {
     }
 
     /**
-     * 1. Tạo chuỗi tham số, băm bằng vnp_HashSecret, trả về URL của VNPay cho Frontend chuyển hướng khách
+     * Authenticated API: Tạo URL chuyển hướng thanh toán tiền cọc qua cổng VNPay
+     * Băm chuỗi dữ liệu giao dịch bằng thuật toán HMAC-SHA512 kèm vnp_HashSecret để đảm bảo an toàn.
      */
     @PostMapping("/create-vnpay-url")
     @PreAuthorize("isAuthenticated()")
@@ -56,9 +61,8 @@ public class PaymentController {
     }
 
     /**
-     * 2. Nhận request gọi ngầm từ máy chủ VNPay (IPN Webhook).
-     * Bắt buộc phải Verify Checksum lại chuỗi hash để chống giả mạo.
-     * Trả về đúng định dạng RspCode và Message theo chuẩn kỹ thuật của VNPay.
+     * Public Webhook API: Nhận thông báo kết quả giao dịch ngầm (IPN) từ máy chủ VNPay
+     * Xác minh chữ ký Checksum chống giả mạo, cập nhật trạng thái đơn hàng sang CONFIRMED và kích hoạt gửi email.
      */
     @RequestMapping(value = "/vnpay-ipn", method = {RequestMethod.GET, RequestMethod.POST})
     public ResponseEntity<Map<String, String>> processVNPayIpn(@RequestParam Map<String, String> allParams) {
@@ -67,8 +71,8 @@ public class PaymentController {
     }
 
     /**
-     * 3. Nhận request chuyển hướng từ trình duyệt khách hàng sau khi thanh toán xong trên cổng VNPay (Return URL).
-     * Bắt buộc phải Verify Checksum lại chuỗi hash để đảm bảo tính toàn vẹn dữ liệu.
+     * Public API: Nhận kết quả điều hướng về từ trình duyệt của khách hàng sau khi thanh toán trên VNPay
+     * Kiểm tra chữ ký bảo mật và trả về kết quả thanh toán chi tiết cho giao diện người dùng.
      */
     @GetMapping("/vnpay-return")
     public ApiResponse<Map<String, Object>> processVNPayReturn(@RequestParam Map<String, String> allParams) {
@@ -77,7 +81,8 @@ public class PaymentController {
     }
 
     /**
-     * 4. Xác nhận hình thức thanh toán trực tiếp tại Studio (CASH)
+     * Authenticated API: Đăng ký hình thức thanh toán trực tiếp bằng tiền mặt tại Studio
+     * Dành riêng cho các đơn đặt lịch thực hiện tại Studio không yêu cầu thanh toán cọc trực tuyến.
      */
     @PostMapping("/pay-at-studio")
     @PreAuthorize("isAuthenticated()")

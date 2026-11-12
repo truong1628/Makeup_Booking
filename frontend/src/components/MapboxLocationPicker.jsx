@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, calculateTravelFee } from '../utils/format';
 
-// Tọa độ Studio MNM (204 Trần Duy Hưng, Q. Cầu Giấy, Hà Nội)
+// Tọa độ Studio DungDorys (204 Trần Duy Hưng, Q. Cầu Giấy, Hà Nội)
 const STUDIO_COORDS = {
   lng: 105.7951,
   lat: 21.0076,
@@ -16,8 +16,9 @@ const STUDIO_COORDS = {
 };
 
 // Token Mapbox
-// Thay vì gán chuỗi token trực tiếp vào đây, hãy đổi thành:
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+const DEFAULT_MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ||
+  'pk.eyJ1IjoibnZ0MjkwNjIwMDUiLCJhIjoiY21wOGYxaDA0MDZobzJ4cGswYzVtcHFmOCJ9.nP0Q3965TPCLvopUNOdF0w';
+
 mapboxgl.accessToken = DEFAULT_MAPBOX_TOKEN;
 
 // Tính khoảng cách Haversine (đường chim bay) * 1.25 hệ số giao thông nội đô
@@ -39,7 +40,7 @@ const calculateHaversineKm = (lat1, lon1, lat2, lon2) => {
 
 const MapboxLocationPicker = ({
   initialAddress = '',
-  initialDistanceKm = 5,
+  initialDistanceKm = 0,
   onLocationChange,
 }) => {
   const mapContainerRef = useRef(null);
@@ -59,7 +60,7 @@ const MapboxLocationPicker = ({
   const [suggestions, setSuggestions] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [distanceKm, setDistanceKm] = useState(initialDistanceKm);
+  const [distanceKm, setDistanceKm] = useState(initialAddress ? initialDistanceKm : 0);
   const [durationMins, setDurationMins] = useState(null);
   const [calculatingRoute, setCalculatingRoute] = useState(false);
   const [mapError] = useState(null);
@@ -341,7 +342,7 @@ const MapboxLocationPicker = ({
         studioEl.className = 'studio-marker flex flex-col items-center';
         studioEl.innerHTML = `
           <div class="px-2.5 py-1 bg-slate-900 text-amber-300 text-[11px] font-bold rounded-full shadow-lg border border-amber-400/50 whitespace-nowrap mb-1">
-            ✨ Studio MNM
+            ✨ Studio DungDorys
           </div>
           <div class="w-8 h-8 rounded-full bg-slate-900 border-2 border-amber-400 shadow-xl flex items-center justify-center text-amber-300 text-sm">
             🏢
@@ -350,28 +351,23 @@ const MapboxLocationPicker = ({
 
         studioMarkerRef.current = new mapboxgl.Marker({ element: studioEl, anchor: 'bottom' })
           .setLngLat([STUDIO_COORDS.lng, STUDIO_COORDS.lat])
-          .setPopup(
-            new mapboxgl.Popup({ offset: [0, -36] }).setHTML(`
-              <div class="p-2 text-xs">
-                <p class="font-bold text-slate-900">${STUDIO_COORDS.name}</p>
-                <p class="text-slate-600 mt-1">${STUDIO_COORDS.address}</p>
-                <span class="inline-block mt-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold">
-                  Điểm xuất phát tính phí di chuyển
-                </span>
-              </div>
-            `)
-          )
           .addTo(map);
 
-        // 2. Điểm mặc định ban đầu lân cận (Khu Keangnam / Cầu Giấy)
-        const defaultCustLng = 105.783;
-        const defaultCustLat = 21.017;
-        if (setCustomerLocationRef.current) {
-          setCustomerLocationRef.current(
-            defaultCustLng,
-            defaultCustLat,
-            initialAddressRef.current || 'Khu vực Cầu Giấy, Hà Nội'
-          );
+        // Nếu người dùng đã chọn địa chỉ từ trước (ví dụ quay lại từ Bước 3), khôi phục vị trí đó
+        const savedAddr = (initialAddressRef.current || '').trim();
+        if (savedAddr) {
+          fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(savedAddr)}.json?country=vn&limit=1&language=vi&access_token=${token}`
+          )
+            .then((r) => r.json())
+            .then((data) => {
+              if (!isMounted || !data.features || data.features.length === 0) return;
+              const [lng, lat] = data.features[0].center;
+              if (setCustomerLocationRef.current) {
+                setCustomerLocationRef.current(lng, lat, savedAddr);
+              }
+            })
+            .catch(() => {});
         }
       });
 
@@ -567,7 +563,7 @@ const MapboxLocationPicker = ({
                 setShowDropdown(true);
               }
             }}
-            placeholder="Gõ tìm kiếm địa chỉ (ví dụ: Keangnam, Times City, Cầu Giấy...) hoặc nhấp vào bản đồ"
+            placeholder="Gõ tìm kiếm địa chỉ của bạn hoặc nhấp trực tiếp vào bản đồ..."
             className="w-full pl-10 pr-28 py-3 rounded-2xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white shadow-xs"
           />
 
@@ -578,6 +574,24 @@ const MapboxLocationPicker = ({
                 setSearchQuery('');
                 setShowDropdown(false);
                 setSuggestions([]);
+                setDistanceKm(0);
+                setDurationMins(0);
+                if (customerMarkerRef.current) {
+                  customerMarkerRef.current.remove();
+                  customerMarkerRef.current = null;
+                }
+                if (mapRef.current && mapRef.current.getSource('route')) {
+                  mapRef.current.getSource('route').setData({ type: 'FeatureCollection', features: [] });
+                }
+                if (onLocationChangeRef.current) {
+                  onLocationChangeRef.current({
+                    address: '',
+                    distanceKm: 0,
+                    coordinates: null,
+                    travelFee: 0,
+                    durationMins: 0,
+                  });
+                }
               }}
               className="absolute right-24 text-slate-400 hover:text-slate-600 p-1"
             >
@@ -670,10 +684,14 @@ const MapboxLocationPicker = ({
           <div className="pointer-events-auto bg-white/90 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-md border border-white/60 flex items-center gap-2.5 text-xs">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="font-bold text-slate-800">
-              {calculatingRoute ? 'Đang tính toán tuyến đường...' : 'Tuyến đường di chuyển từ Studio'}
+              {calculatingRoute
+                ? 'Đang tính toán tuyến đường...'
+                : searchQuery
+                  ? 'Tuyến đường di chuyển từ Studio'
+                  : 'Vị trí Studio DungDorys (204 Trần Duy Hưng)'}
             </span>
             <span className="text-[10px] text-rose-600 font-semibold hidden sm:inline">
-              | Nhấp chuột vào điểm bất kỳ để đổi vị trí
+              | Nhấp chuột vào bản đồ để chọn điểm đến của bạn
             </span>
           </div>
         </div>
@@ -699,7 +717,7 @@ const MapboxLocationPicker = ({
               Khoảng cách {distanceKm} km vượt quá bán kính phục vụ (tối đa 200km)
             </p>
             <p className="text-amber-800 leading-relaxed">
-              Studio chỉ nhận đơn phục vụ trang điểm tận nơi trong phạm vi tối đa <strong>200 km</strong> tính từ cơ sở 204 Trần Duy Hưng. Quý khách vui lòng chọn địa điểm gần hơn hoặc chuyển sang hình thức <strong>"Tại Studio MNM"</strong> (miễn phí di chuyển).
+              Studio chỉ nhận đơn phục vụ trang điểm tận nơi trong phạm vi tối đa <strong>200 km</strong> tính từ cơ sở 204 Trần Duy Hưng. Quý khách vui lòng chọn địa điểm gần hơn hoặc chuyển sang hình thức <strong>"Tại Studio DungDorys"</strong> (miễn phí di chuyển).
             </p>
           </div>
         </div>

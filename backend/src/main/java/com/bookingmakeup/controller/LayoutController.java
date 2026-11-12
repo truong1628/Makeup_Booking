@@ -13,6 +13,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Controller quản lý phong cách trang điểm (Makeup Layout)
+ * Cung cấp API cho khách hàng xem các phong cách makeup có sẵn khi đặt lịch và cho Admin quản trị thêm/sửa/xóa layout.
+ */
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor

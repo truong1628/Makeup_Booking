@@ -40,6 +40,10 @@ import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Controller trung tâm quản trị hệ thống dành riêng cho Quản trị viên (ROLE_ADMIN)
+ * Quản lý chuyên viên trang điểm, phân công lịch làm việc/ngày nghỉ, thống kê doanh thu và điều phối đổi thợ cho các ca hẹn.
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -57,6 +61,7 @@ public class AdminController {
 
     /**
      * Admin tạo tài khoản thợ trang điểm (Artist) mới
+     * Khởi tạo đồng thời tài khoản người dùng với ROLE_ARTIST và bản ghi hồ sơ MakeupArtist.
      */
     @PostMapping("/artists")
     public ResponseEntity<ApiResponse<AuthResponse>> createArtist(@Valid @RequestBody RegisterRequest request) {
@@ -66,7 +71,8 @@ public class AdminController {
     }
 
     /**
-     * Admin lấy danh sách tất cả thợ trang điểm
+     * Admin lấy danh sách tất cả thợ trang điểm trong hệ thống
+     * Kèm thông tin tài khoản, ảnh đại diện, kinh nghiệm chuyên môn và trạng thái nhận khách.
      */
     @GetMapping("/artists")
     @Transactional(readOnly = true)
@@ -212,8 +218,8 @@ public class AdminController {
             map.put("artistName", (s.getMakeupArtist() != null && s.getMakeupArtist().getUser() != null)
                     ? s.getMakeupArtist().getUser().getFullName() : "Chuyên viên");
             map.put("scheduleDate", s.getScheduleDate());
-            map.put("startTime", s.getStartTime() != null ? s.getStartTime().toString() : "08:00:00");
-            map.put("endTime", s.getEndTime() != null ? s.getEndTime().toString() : "20:00:00");
+            map.put("startTime", s.getStartTime() != null ? s.getStartTime().toString() : "00:00:00");
+            map.put("endTime", s.getEndTime() != null ? s.getEndTime().toString() : "23:59:59");
             map.put("isDayOff", s.getIsDayOff() != null ? s.getIsDayOff() : false);
             return map;
         }).toList();
@@ -251,9 +257,9 @@ public class AdminController {
             }
         } else {
             LocalTime startTime = body.containsKey("startTime") && body.get("startTime") != null
-                    ? LocalTime.parse(body.get("startTime").toString()) : LocalTime.of(8, 0);
+                    ? LocalTime.parse(body.get("startTime").toString()) : LocalTime.of(0, 0);
             LocalTime endTime = body.containsKey("endTime") && body.get("endTime") != null
-                    ? LocalTime.parse(body.get("endTime").toString()) : LocalTime.of(20, 0);
+                    ? LocalTime.parse(body.get("endTime").toString()) : LocalTime.of(23, 59, 59);
 
             schedule = ArtistSchedule.builder()
                     .makeupArtist(artist)

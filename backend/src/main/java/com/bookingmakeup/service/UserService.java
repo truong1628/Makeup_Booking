@@ -16,6 +16,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Service quản lý thông tin hồ sơ người dùng cá nhân (Customer, Artist, Admin)
+ * Xử lý truy vấn thông tin cá nhân, cập nhật SĐT/avatar/địa chỉ và kiểm tra hợp lệ khi đổi mật khẩu.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -25,6 +29,9 @@ public class UserService {
     private final BookingRepository bookingRepository;
     private final PasswordEncoder passwordEncoder;
 
+    /**
+     * Lấy thông tin chi tiết hồ sơ người dùng kèm số lượng đơn đặt lịch đã thực hiện
+     */
     @Transactional(readOnly = true)
     public UserProfileResponse getProfile(UserPrincipal currentUser) {
         User user = getUserFromPrincipal(currentUser);
@@ -33,6 +40,10 @@ public class UserService {
         return toUserProfileResponse(user, totalBookings);
     }
 
+    /**
+     * Cập nhật thông tin hồ sơ cá nhân của người dùng
+     * Kiểm tra tính duy nhất của số điện thoại nếu thay đổi, cập nhật họ tên, ảnh đại diện và địa chỉ.
+     */
     @Transactional
     public UserProfileResponse updateProfile(UserPrincipal currentUser, UpdateProfileRequest request) {
         User user = getUserFromPrincipal(currentUser);
@@ -66,6 +77,10 @@ public class UserService {
         return toUserProfileResponse(saved, totalBookings);
     }
 
+    /**
+     * Đổi mật khẩu tài khoản người dùng
+     * Ràng buộc: Mật khẩu mới phải khớp xác nhận, mật khẩu cũ phải chính xác và mật khẩu mới không được trùng mật khẩu cũ.
+     */
     @Transactional
     public void changePassword(UserPrincipal currentUser, ChangePasswordRequest request) {
         User user = getUserFromPrincipal(currentUser);

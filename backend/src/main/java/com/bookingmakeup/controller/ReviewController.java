@@ -24,6 +24,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Controller quản lý đánh giá và nhận xét dịch vụ (Review / Rating)
+ * Cung cấp API cho khách hàng gửi đánh giá sau khi hoàn thành lịch hẹn, xem đánh giá cá nhân và xem nhận xét công khai theo từng dịch vụ.
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/reviews")
@@ -35,7 +39,8 @@ public class ReviewController {
     private final UserRepository userRepository;
 
     /**
-     * Khách hàng gửi đánh giá cho đơn hẹn (đã hoàn thành hoặc đã xác nhận)
+     * Authenticated API: Khách hàng gửi đánh giá và số sao (1-5 sao) cho đơn lịch hẹn đã hoàn thành
+     * Kiểm tra quyền sở hữu đơn đặt lịch, kiểm tra trạng thái COMPLETED và tự động khử mã độc HTML (chống XSS Injection).
      */
     @PostMapping
     @Transactional
@@ -116,7 +121,7 @@ public class ReviewController {
     }
 
     /**
-     * Lấy đánh giá của một đơn hẹn
+     * Public API: Lấy thông tin đánh giá của một đơn đặt lịch cụ thể theo bookingId
      */
     @GetMapping("/booking/{bookingId}")
     @Transactional(readOnly = true)
@@ -145,7 +150,7 @@ public class ReviewController {
     }
 
     /**
-     * Lấy danh sách tất cả đánh giá của khách hàng hiện tại
+     * Authenticated API: Lấy danh sách toàn bộ các đánh giá mà khách hàng hiện tại đã gửi
      */
     @GetMapping("/my-reviews")
     @Transactional(readOnly = true)
@@ -166,7 +171,7 @@ public class ReviewController {
     }
 
     /**
-     * Lấy danh sách đánh giá công khai cho một dịch vụ
+     * Public API: Lấy danh sách đánh giá công khai của khách hàng dành cho một dịch vụ cụ thể
      */
     @GetMapping("/service/{serviceId}")
     @Transactional(readOnly = true)

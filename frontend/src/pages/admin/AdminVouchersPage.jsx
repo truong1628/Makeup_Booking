@@ -2,15 +2,28 @@ import React, { useEffect, useState } from 'react';
 import {
   Tag, Plus, Edit3, Trash2, CheckCircle2, AlertCircle,
   Percent, X, Loader2,
-  Gift, Search, RefreshCw, Copy
+  Gift, Search, RefreshCw, Copy, Users, UserCheck, UserPlus, Send
 } from 'lucide-react';
 import { voucherService } from '../../services/voucherService';
 import { useToast } from '../../context/ToastContext';
 import { formatCurrency } from '../../utils/format';
 
+const CUSTOMER_TIER_OPTIONS = [
+  { value: 'ALL', label: 'Tất Cả Khách Hàng', desc: 'Mọi khách hàng trong hệ thống đều có thể dùng', badgeColor: 'bg-slate-800 text-slate-300 border-slate-700' },
+  { value: 'NEW', label: 'Khách Hàng Mới', desc: 'Chỉ áp dụng cho khách chưa từng có đơn hoàn thành', badgeColor: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
+  { value: 'BRONZE', label: 'Hạng Đồng (Bronze)', desc: 'Khách đã có ít nhất 1 đơn hoàn thành', badgeColor: 'bg-amber-700/20 text-amber-300 border-amber-600/30' },
+  { value: 'SILVER', label: 'Hạng Bạc (Silver)', desc: 'Từ 3 đơn hoàn thành & tổng chi từ 1.000.000đ', badgeColor: 'bg-slate-400/20 text-slate-200 border-slate-400/40' },
+  { value: 'GOLD', label: 'Hạng Vàng (Gold)', desc: 'Từ 5 đơn hoàn thành & tổng chi từ 3.000.000đ', badgeColor: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
+  { value: 'VIP', label: 'Hạng VIP (Diamond)', desc: 'Từ 10 đơn hoàn thành & tổng chi từ 7.000.000đ', badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
+];
+
+const getTierMeta = (tier) =>
+  CUSTOMER_TIER_OPTIONS.find((t) => t.value === tier) || CUSTOMER_TIER_OPTIONS[0];
+
 const AdminVouchersPage = () => {
   const toast = useToast();
   const [vouchers, setVouchers] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'INACTIVE'
@@ -20,6 +33,7 @@ const AdminVouchersPage = () => {
   const [editingVoucher, setEditingVoucher] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState(null);
+  const [customerSearch, setCustomerSearch] = useState('');
 
   // Form State
   const [formData, setFormData] = useState({
@@ -33,8 +47,20 @@ const AdminVouchersPage = () => {
     startDate: '',
     endDate: '',
     usageLimit: 100,
+    userUsageLimit: 1,
+    targetTier: 'ALL',
+    voucherScope: 'PUBLIC',
+    selectedUserIds: [],
+    assignNote: '',
     active: true,
   });
+
+  // State tặng voucher nhanh cho khách hàng
+  const [assignModalVoucher, setAssignModalVoucher] = useState(null);
+  const [assignCustomerIds, setAssignCustomerIds] = useState([]);
+  const [assignCustomerSearch, setAssignCustomerSearch] = useState('');
+  const [assignNoteInput, setAssignNoteInput] = useState('');
+  const [isAssigning, setIsAssigning] = useState(false);
 
   // State xóa voucher
   const [deletingVoucher, setDeletingVoucher] = useState(null);
@@ -46,8 +72,12 @@ const AdminVouchersPage = () => {
   const loadVouchers = async () => {
     try {
       setLoading(true);
-      const res = await voucherService.getAllVouchersForAdmin();
+      const [res, custRes] = await Promise.all([
+        voucherService.getAllVouchersForAdmin(),
+        voucherService.getCustomersForVoucher().catch(() => []),
+      ]);
       setVouchers(Array.isArray(res) ? res : []);
+      setCustomers(Array.isArray(custRes) ? custRes : []);
     } catch (err) {
       console.error('Lỗi khi tải danh sách voucher:', err);
       toast.error('Không thể tải danh sách voucher: ' + (err.message || ''));
@@ -63,6 +93,7 @@ const AdminVouchersPage = () => {
   const handleOpenCreate = () => {
     setEditingVoucher(null);
     setModalError(null);
+    setCustomerSearch('');
     setFormData({
       code: '',
       name: '',
@@ -74,6 +105,11 @@ const AdminVouchersPage = () => {
       startDate: new Date().toISOString().substring(0, 16),
       endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().substring(0, 16),
       usageLimit: 100,
+      userUsageLimit: 1,
+      targetTier: 'ALL',
+      voucherScope: 'PUBLIC',
+      selectedUserIds: [],
+      assignNote: '',
       active: true,
     });
     setShowModal(true);
@@ -82,6 +118,7 @@ const AdminVouchersPage = () => {
   const handleOpenEdit = (voucher) => {
     setEditingVoucher(voucher);
     setModalError(null);
+    setCustomerSearch('');
     setFormData({
       code: voucher.code || '',
       name: voucher.name || '',
@@ -93,6 +130,11 @@ const AdminVouchersPage = () => {
       startDate: voucher.startDate ? voucher.startDate.substring(0, 16) : '',
       endDate: voucher.endDate ? voucher.endDate.substring(0, 16) : '',
       usageLimit: voucher.usageLimit || '',
+      userUsageLimit: voucher.userUsageLimit || 1,
+      targetTier: voucher.targetTier || 'ALL',
+      voucherScope: voucher.voucherScope || 'PUBLIC',
+      selectedUserIds: [],
+      assignNote: '',
       active: voucher.active !== false,
     });
     setShowModal(true);
@@ -104,6 +146,18 @@ const AdminVouchersPage = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+  };
+
+  const toggleSelectCustomer = (userId) => {
+    setFormData((prev) => {
+      const exists = prev.selectedUserIds.includes(userId);
+      return {
+        ...prev,
+        selectedUserIds: exists
+          ? prev.selectedUserIds.filter((id) => id !== userId)
+          : [...prev.selectedUserIds, userId],
+      };
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -137,15 +191,49 @@ const AdminVouchersPage = () => {
         startDate: formData.startDate ? formData.startDate : null,
         endDate: formData.endDate ? formData.endDate : null,
         usageLimit: formData.usageLimit ? Number(formData.usageLimit) : null,
+        userUsageLimit: formData.userUsageLimit ? Number(formData.userUsageLimit) : 1,
+        targetTier: formData.voucherScope === 'PERSONAL' ? 'ALL' : (formData.targetTier || 'ALL'),
+        voucherScope: formData.voucherScope || 'PUBLIC',
         active: formData.active,
       };
 
+      let savedVoucherId = editingVoucher?.id;
       if (editingVoucher) {
         await voucherService.updateVoucher(editingVoucher.id, payload);
-        toast.success(`✅ Cập nhật voucher '${cleanCode}' thành công!`);
       } else {
-        await voucherService.createVoucher(payload);
-        toast.success(`🎉 Tạo mới voucher '${cleanCode}' thành công!`);
+        const created = await voucherService.createVoucher(payload);
+        savedVoucherId = created?.id;
+      }
+
+      // Nếu chọn tặng riêng cho khách hàng cụ thể và có tích chọn khách hàng
+      let assignedSuccess = 0;
+      if (formData.voucherScope === 'PERSONAL' && formData.selectedUserIds.length > 0 && savedVoucherId) {
+        for (const uid of formData.selectedUserIds) {
+          try {
+            await voucherService.assignVoucherToUser({
+              voucherId: savedVoucherId,
+              userId: uid,
+              note: formData.assignNote?.trim() || undefined,
+            });
+            assignedSuccess++;
+          } catch (assignErr) {
+            console.warn('Không thể tặng voucher cho user ID ' + uid, assignErr);
+          }
+        }
+      }
+
+      if (editingVoucher) {
+        toast.success(
+          assignedSuccess > 0
+            ? `✅ Cập nhật '${cleanCode}' & tặng thêm cho ${assignedSuccess} khách hàng!`
+            : `✅ Cập nhật voucher '${cleanCode}' thành công!`
+        );
+      } else {
+        toast.success(
+          assignedSuccess > 0
+            ? `🎉 Tạo voucher '${cleanCode}' & gửi tặng thành công cho ${assignedSuccess} khách hàng!`
+            : `🎉 Tạo mới voucher '${cleanCode}' thành công!`
+        );
       }
 
       setShowModal(false);
@@ -156,6 +244,42 @@ const AdminVouchersPage = () => {
       toast.error(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleOpenAssignModal = (voucher) => {
+    setAssignModalVoucher(voucher);
+    setAssignCustomerIds([]);
+    setAssignCustomerSearch('');
+    setAssignNoteInput('Ưu đãi đặc quyền từ DungDorys Studio dành riêng cho bạn!');
+  };
+
+  const handleConfirmAssign = async () => {
+    if (!assignModalVoucher || assignCustomerIds.length === 0) {
+      toast.error('Vui lòng chọn ít nhất 1 khách hàng để tặng voucher');
+      return;
+    }
+    setIsAssigning(true);
+    let successCount = 0;
+    let lastError = null;
+    for (const uid of assignCustomerIds) {
+      try {
+        await voucherService.assignVoucherToUser({
+          voucherId: assignModalVoucher.id,
+          userId: uid,
+          note: assignNoteInput?.trim() || undefined,
+        });
+        successCount++;
+      } catch (err) {
+        lastError = err.message || 'Khách hàng đã sở hữu mã này';
+      }
+    }
+    setIsAssigning(false);
+    if (successCount > 0) {
+      toast.success(`🎁 Đã tặng mã '${assignModalVoucher.code}' vào ví của ${successCount} khách hàng!`);
+      setAssignModalVoucher(null);
+    } else if (lastError) {
+      toast.error(lastError);
     }
   };
 
@@ -395,6 +519,24 @@ const AdminVouchersPage = () => {
                         {voucher.description}
                       </p>
                     )}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      {voucher.voucherScope === 'PERSONAL' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          <UserCheck className="w-3 h-3" />
+                          <span>Tặng riêng khách hàng</span>
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${getTierMeta(voucher.targetTier || 'ALL').badgeColor}`}>
+                          <Users className="w-3 h-3" />
+                          <span>{voucher.targetTierName || getTierMeta(voucher.targetTier || 'ALL').label}</span>
+                        </span>
+                      )}
+                      {voucher.userUsageLimit && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                          {voucher.userUsageLimit} lượt/khách
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Discount details */}
@@ -412,6 +554,15 @@ const AdminVouchersPage = () => {
                       <span className="text-slate-500">Đơn tối thiểu:</span>
                       <span className="font-medium text-slate-200">
                         {voucher.minOrderAmount > 0 ? formatCurrency(voucher.minOrderAmount) : 'Không giới hạn'}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-slate-300">
+                      <span className="text-slate-500">Áp dụng cho:</span>
+                      <span className="font-medium text-slate-200">
+                        {voucher.voucherScope === 'PERSONAL'
+                          ? 'Ví khách được tặng'
+                          : (voucher.targetTierName || getTierMeta(voucher.targetTier || 'ALL').label)}
                       </span>
                     </div>
 
@@ -438,20 +589,30 @@ const AdminVouchersPage = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="pt-4 mt-4 border-t border-slate-800/80 grid grid-cols-2 gap-2">
+                <div className="pt-4 mt-4 border-t border-slate-800/80 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAssignModal(voucher)}
+                    className="inline-flex items-center justify-center gap-1 py-2 px-2 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 text-xs font-semibold border border-purple-500/30 transition-all cursor-pointer"
+                    title="Tặng voucher này vào ví khách hàng cụ thể"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Tặng KH</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(voucher)}
-                    className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                    className="inline-flex items-center justify-center gap-1 py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
-                    <span>Chỉnh Sửa</span>
+                    <span>Sửa</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setDeletingVoucher(voucher)}
-                    className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold border border-rose-500/20 transition-all cursor-pointer"
+                    className="inline-flex items-center justify-center gap-1 py-2 px-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold border border-rose-500/20 transition-all cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Xóa</span>
@@ -569,17 +730,189 @@ const AdminVouchersPage = () => {
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-slate-300 mb-1 font-semibold">Giới Hạn Lượt Dùng</label>
-                  <input
-                    type="number"
-                    name="usageLimit"
-                    value={formData.usageLimit}
-                    onChange={handleFormChange}
-                    placeholder="Bỏ trống nếu không giới hạn"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-300 mb-1 font-semibold">Tổng Lượt Dùng</label>
+                    <input
+                      type="number"
+                      name="usageLimit"
+                      value={formData.usageLimit}
+                      onChange={handleFormChange}
+                      placeholder="Không giới hạn"
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 mb-1 font-semibold">Lượt / Khách</label>
+                    <input
+                      type="number"
+                      name="userUsageLimit"
+                      min="1"
+                      value={formData.userUsageLimit}
+                      onChange={handleFormChange}
+                      placeholder="1"
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                    />
+                  </div>
                 </div>
+              </div>
+
+              {/* PHẦN ÁP DỤNG CHO KHÁCH HÀNG NÀO */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-200 font-bold flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-rose-400" />
+                    <span>Áp Dụng Cho Khách Hàng Nào?</span>
+                  </label>
+                </div>
+
+                {/* Chọn phạm vi: Công khai theo hạng vs Tặng riêng khách cụ thể */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, voucherScope: 'PUBLIC' }))}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      formData.voucherScope === 'PUBLIC'
+                        ? 'bg-rose-500/15 border-rose-500/50 text-white'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Theo Nhóm / Hạng</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Công khai theo hạng khách hàng</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, voucherScope: 'PERSONAL' }))}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      formData.voucherScope === 'PERSONAL'
+                        ? 'bg-purple-500/15 border-purple-500/50 text-white'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Khách Hàng Cụ Thể</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Tặng riêng vào ví khách đã chọn</p>
+                  </button>
+                </div>
+
+                {formData.voucherScope === 'PUBLIC' ? (
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-400 text-[11px] font-medium">
+                      Chọn đối tượng / hạng khách hàng được dùng mã:
+                    </label>
+                    <select
+                      name="targetTier"
+                      value={formData.targetTier}
+                      onChange={handleFormChange}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                    >
+                      {CUSTOMER_TIER_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400 italic">
+                      💡 {getTierMeta(formData.targetTier).desc}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-slate-300 font-semibold text-[11px]">
+                        Chọn khách hàng nhận voucher ({formData.selectedUserIds.length} đã chọn)
+                      </label>
+                      {formData.selectedUserIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setFormData((prev) => ({ ...prev, selectedUserIds: [] }))}
+                          className="text-[10px] text-rose-400 hover:underline cursor-pointer"
+                        >
+                          Bỏ chọn tất cả
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                        placeholder="Tìm khách theo tên, SĐT hoặc email..."
+                        className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-[11px] focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+
+                    <div className="max-h-36 overflow-y-auto rounded-xl bg-slate-900 border border-slate-800 divide-y divide-slate-800/60">
+                      {customers.filter((c) => {
+                        const q = customerSearch.trim().toLowerCase();
+                        if (!q) return true;
+                        return (
+                          (c.fullName || '').toLowerCase().includes(q) ||
+                          (c.phone || '').toLowerCase().includes(q) ||
+                          (c.email || '').toLowerCase().includes(q)
+                        );
+                      }).length === 0 ? (
+                        <p className="p-3 text-center text-slate-500 text-[11px]">Không tìm thấy khách hàng phù hợp</p>
+                      ) : (
+                        customers
+                          .filter((c) => {
+                            const q = customerSearch.trim().toLowerCase();
+                            if (!q) return true;
+                            return (
+                              (c.fullName || '').toLowerCase().includes(q) ||
+                              (c.phone || '').toLowerCase().includes(q) ||
+                              (c.email || '').toLowerCase().includes(q)
+                            );
+                          })
+                          .map((cust) => {
+                            const checked = formData.selectedUserIds.includes(cust.id);
+                            return (
+                              <label
+                                key={cust.id}
+                                className={`flex items-center justify-between px-3 py-2 cursor-pointer transition-colors ${
+                                  checked ? 'bg-purple-500/15' : 'hover:bg-slate-800/70'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleSelectCustomer(cust.id)}
+                                    className="w-3.5 h-3.5 rounded text-purple-600 bg-slate-950 border-slate-700 cursor-pointer"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-[11px] font-semibold text-white truncate">
+                                      {cust.fullName || 'Khách hàng'}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 truncate">
+                                      {cust.email} {cust.phone ? `· ${cust.phone}` : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      name="assignNote"
+                      value={formData.assignNote}
+                      onChange={handleFormChange}
+                      placeholder="Lời nhắn tặng kèm (tuỳ chọn)..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-[11px] focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -649,6 +982,122 @@ const AdminVouchersPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tặng Voucher Nhanh Cho Khách Hàng */}
+      {assignModalVoucher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-purple-500/15 text-purple-400 border border-purple-500/25">
+                  <Gift className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Tặng Voucher Cho Khách Hàng</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Mã: <strong className="text-rose-400 font-mono">{assignModalVoucher.code}</strong> · {assignModalVoucher.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAssignModalVoucher(null)}
+                className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={assignCustomerSearch}
+                  onChange={(e) => setAssignCustomerSearch(e.target.value)}
+                  placeholder="Tìm khách hàng theo tên, SĐT hoặc email..."
+                  className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="max-h-52 overflow-y-auto rounded-2xl bg-slate-950 border border-slate-800 divide-y divide-slate-800/60">
+                {customers
+                  .filter((c) => {
+                    const q = assignCustomerSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      (c.fullName || '').toLowerCase().includes(q) ||
+                      (c.phone || '').toLowerCase().includes(q) ||
+                      (c.email || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .map((cust) => {
+                    const checked = assignCustomerIds.includes(cust.id);
+                    return (
+                      <label
+                        key={cust.id}
+                        className={`flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer transition-colors ${
+                          checked ? 'bg-purple-500/15' : 'hover:bg-slate-900'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setAssignCustomerIds((prev) =>
+                              prev.includes(cust.id) ? prev.filter((id) => id !== cust.id) : [...prev, cust.id]
+                            )
+                          }
+                          className="w-4 h-4 rounded text-purple-600 bg-slate-900 border-slate-700 cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-white truncate">{cust.fullName || 'Khách hàng'}</p>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {cust.email} {cust.phone ? `· ${cust.phone}` : ''}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1 font-medium">Lời nhắn gửi khách hàng</label>
+                <input
+                  type="text"
+                  value={assignNoteInput}
+                  onChange={(e) => setAssignNoteInput(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                Đã chọn <strong className="text-purple-400">{assignCustomerIds.length}</strong> khách hàng
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAssignModalVoucher(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={isAssigning || assignCustomerIds.length === 0}
+                  onClick={handleConfirmAssign}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-md shadow-purple-600/20"
+                >
+                  {isAssigning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>Gửi Tặng Ngay</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

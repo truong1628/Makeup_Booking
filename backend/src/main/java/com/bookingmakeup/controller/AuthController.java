@@ -16,6 +16,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Controller quản lý xác thực tài khoản và phiên đăng nhập của người dùng
+ * Bao gồm các chức năng đăng ký, đăng nhập và lấy thông tin tài khoản hiện tại.
+ */
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -23,6 +27,10 @@ public class AuthController {
 
     private final AuthService authService;
 
+    /**
+     * Public API: Đăng ký tài khoản khách hàng mới
+     * Nhận thông tin đăng ký (email, mật khẩu, họ tên, số điện thoại), tạo tài khoản và trả về JWT token.
+     */
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
         AuthResponse response = authService.register(request);
@@ -30,12 +38,20 @@ public class AuthController {
                 .body(ApiResponse.created("Đăng ký tài khoản thành công", response));
     }
 
+    /**
+     * Public API: Đăng nhập vào hệ thống
+     * Xác thực thông tin đăng nhập (email và mật khẩu), tạo phiên làm việc và trả về JWT token kèm thông tin người dùng.
+     */
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
         return ApiResponse.success("Đăng nhập thành công", response);
     }
 
+    /**
+     * Authenticated API: Lấy thông tin tài khoản đang đăng nhập hiện tại
+     * Trích xuất thông tin người dùng từ UserPrincipal (JWT Token) đã được xác thực trong SecurityContext.
+     */
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> getCurrentUser(@AuthenticationPrincipal UserPrincipal currentUser) {
         if (currentUser == null) {

@@ -32,6 +32,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Service quản lý mã khuyến mãi, ví voucher cá nhân và phân hạng thành viên (Customer Tier)
+ * Xử lý tính toán mức chiết khấu (% hoặc tiền mặt), kiểm tra điều kiện hạng (Đồng, Bạc, Vàng, Kim Cương), số lần sử dụng và phân bổ voucher.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

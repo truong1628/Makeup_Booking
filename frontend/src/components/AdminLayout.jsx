@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { authStorage } from '../utils/authStorage';
 
 const AdminLayout = () => {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, requestLogout, isAdmin } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -22,8 +22,7 @@ const AdminLayout = () => {
   }
 
   const handleLogout = () => {
-    logout();
-    navigate('/login');
+    requestLogout(() => navigate('/login'));
   };
 
   const navItems = [
@@ -177,34 +176,25 @@ const AdminLayout = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 lg:pl-72 flex flex-col min-h-screen min-w-0 max-w-full">
-        {/* Top Navbar */}
-        <header className="sticky top-0 z-30 h-20 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 lg:px-8 w-full">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                <span>DungDorys Admin Center</span>
-                <span className="hidden sm:inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                  v1.0.0
-                </span>
-              </h2>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors shrink-0"
-            >
-              <span>Trang chủ</span>
-            </Link>
-          </div>
-        </header>
+        {/* Mobile Header (chỉ hiển thị trên màn hình nhỏ để bật mở Menu Sidebar) */}
+        <div className="lg:hidden sticky top-0 z-30 h-14 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800 flex items-center justify-between px-4 w-full">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
+            title="Mở menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="font-serif font-bold text-white text-sm">
+            Dung<span className="text-rose-400">Dorys</span> Admin
+          </span>
+          <Link
+            to="/"
+            className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-200 text-xs font-medium"
+          >
+            Trang chủ
+          </Link>
+        </div>
 
         {/* Dynamic Page Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-950 min-w-0 max-w-full">

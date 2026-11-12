@@ -118,7 +118,7 @@ const ArtistSchedulePage = () => {
                   />
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  * Hệ thống sẽ tự động khóa ca từ 08:00 đến 20:00 cho ngày này.
+                  * Hệ thống sẽ tự động khóa ca cả ngày (00:00 - 23:59) cho ngày này.
                 </p>
               </div>
 
@@ -159,12 +159,8 @@ const ArtistSchedulePage = () => {
             </h4>
             <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-slate-400">Ca Sáng - Chiều:</span>
-                <span className="font-semibold text-white">08:00 - 17:00</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-slate-400">Ca Tối / Tiệc Đêm:</span>
-                <span className="font-semibold text-white">17:00 - 20:00</span>
+                <span className="text-slate-400">Giờ nhận lịch:</span>
+                <span className="font-semibold text-amber-400">Cả ngày (00:00 - 23:59)</span>
               </div>
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400">Ngày làm việc:</span>
@@ -247,7 +243,7 @@ const ArtistSchedulePage = () => {
                           </div>
                           <span className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
                             <Clock className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Khóa nhận ca: {item.startTime || '08:00'} - {item.endTime || '20:00'}</span>
+                            <span>Khóa nhận ca: Cả ngày</span>
                           </span>
                         </div>
                       </div>

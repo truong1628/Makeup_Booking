@@ -26,7 +26,7 @@ const AdminArtistsPage = () => {
     phone: '',
     password: 'Password123@',
     experience: '3 năm kinh nghiệm',
-    workingHours: '08:00 - 20:00',
+    workingHours: 'Cả ngày',
     workingDays: 'Thứ 2 - Chủ Nhật',
   });
 
@@ -152,7 +152,7 @@ const AdminArtistsPage = () => {
       phone: artist.phone || '',
       password: '',
       experience: artist.experience || '',
-      workingHours: artist.workingHours || '08:00 - 20:00',
+      workingHours: (artist.workingHours && !/\d{2}:\d{2}/.test(artist.workingHours)) ? artist.workingHours : 'Cả ngày',
       workingDays: artist.workingDays || 'Thứ 2 - Chủ Nhật',
       active: artist.active !== false,
     });
@@ -356,7 +356,7 @@ const AdminArtistsPage = () => {
                   </div>
                   <div className="flex justify-between text-slate-300">
                     <span className="text-slate-500">Khung giờ làm:</span>
-                    <span className="font-medium text-slate-200">{artist.workingHours || '08:00 - 20:00'} ({artist.workingDays || 'Thứ 2 - CN'})</span>
+                    <span className="font-medium text-slate-200">{(artist.workingHours && !/\d{2}:\d{2}/.test(artist.workingHours)) ? artist.workingHours : 'Cả ngày'} ({artist.workingDays || 'Thứ 2 - CN'})</span>
                   </div>
                 </div>
               </div>

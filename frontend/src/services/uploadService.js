@@ -4,7 +4,7 @@
 
 const compressImageFile = (file, maxDimension = 1280, quality = 0.82) => {
   return new Promise((resolve) => {
-    // Nếu không phải file ảnh hoặc ảnh rất nhỏ (< 150KB) thì giữ nguyên nhưng vẫn tạo dataUrl dự phòng
+    // 
     if (!(file instanceof Blob) || !file.type?.startsWith('image/')) {
       resolve({ blob: file, dataUrl: null });
       return;

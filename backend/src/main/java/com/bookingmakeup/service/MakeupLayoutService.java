@@ -17,6 +17,10 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * Service quản lý phong cách layout trang điểm (Makeup Layout)
+ * Cung cấp danh sách phong cách cho khách hàng lựa chọn khi đặt lịch và xử lý CRUD layout cho Admin.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -24,6 +28,9 @@ public class MakeupLayoutService {
 
     private final MakeupLayoutRepository makeupLayoutRepository;
 
+    /**
+     * Lấy danh sách phong cách trang điểm đang hoạt động (active = true), sắp xếp theo displayOrder
+     */
     @Transactional(readOnly = true)
     public List<MakeupLayoutResponse> getActiveLayouts() {
         return makeupLayoutRepository.findByActiveTrueOrderByDisplayOrderAsc()
@@ -32,6 +39,9 @@ public class MakeupLayoutService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Lấy tất cả phong cách trang điểm trong hệ thống cho Admin (kể cả các layout đang tạm ẩn)
+     */
     @Transactional(readOnly = true)
     public List<MakeupLayoutResponse> getAllLayoutsForAdmin() {
         return makeupLayoutRepository.findAllByOrderByDisplayOrderAsc()
@@ -40,6 +50,9 @@ public class MakeupLayoutService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Lấy chi tiết một phong cách trang điểm theo ID
+     */
     @Transactional(readOnly = true)
     public MakeupLayoutResponse getLayoutById(Long id) {
         MakeupLayout layout = makeupLayoutRepository.findById(id)
@@ -47,6 +60,10 @@ public class MakeupLayoutService {
         return mapToResponse(layout);
     }
 
+    /**
+     * Tạo mới phong cách trang điểm
+     * Tự động sinh mã slug không dấu nếu không truyền code, lưu trữ gradient màu và thông tin khuôn mặt phù hợp.
+     */
     @Transactional
     public MakeupLayoutResponse createLayout(MakeupLayoutRequest request) {
         String code = request.getCode() != null && !request.getCode().isBlank()
@@ -78,6 +95,10 @@ public class MakeupLayoutService {
         return mapToResponse(saved);
     }
 
+    /**
+     * Cập nhật thông tin phong cách trang điểm theo ID
+     * Kiểm tra chống trùng lặp mã code với các phong cách layout khác.
+     */
     @Transactional
     public MakeupLayoutResponse updateLayout(Long id, MakeupLayoutRequest request) {
         MakeupLayout layout = makeupLayoutRepository.findById(id)
@@ -109,6 +130,9 @@ public class MakeupLayoutService {
         return mapToResponse(updated);
     }
 
+    /**
+     * Chuyển đổi trạng thái hiển thị (Bật/Tắt) của phong cách trang điểm
+     */
     @Transactional
     public MakeupLayoutResponse toggleStatus(Long id) {
         MakeupLayout layout = makeupLayoutRepository.findById(id)
@@ -120,6 +144,9 @@ public class MakeupLayoutService {
         return mapToResponse(saved);
     }
 
+    /**
+     * Xóa vĩnh viễn phong cách trang điểm khỏi hệ thống
+     */
     @Transactional
     public void deleteLayout(Long id) {
         MakeupLayout layout = makeupLayoutRepository.findById(id)

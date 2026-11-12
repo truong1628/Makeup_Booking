@@ -22,6 +22,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Service xử lý nghiệp vụ xác thực người dùng, bảo mật và quản lý tài khoản
+ * Cung cấp logic đăng ký khách hàng, Admin tạo chuyên viên, mã hóa mật khẩu và tạo JWT Token.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -33,6 +37,10 @@ public class AuthService {
     private final JwtUtils jwtUtils;
     private final AuthenticationManager authenticationManager;
 
+    /**
+     * Đăng ký tài khoản khách hàng mới vào hệ thống
+     * Kiểm tra trùng lặp email/SĐT, mã hóa mật khẩu BCrypt, mặc định gán ROLE_CUSTOMER và cấp phát JWT token.
+     */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         String email = request.getEmail().trim().toLowerCase();
@@ -77,6 +85,10 @@ public class AuthService {
                 .build();
     }
 
+    /**
+     * Admin tạo tài khoản thợ trang điểm (Makeup Artist) mới
+     * Thiết lập quyền ROLE_ARTIST, khởi tạo bản ghi hồ sơ thợ kèm kinh nghiệm, giờ làm việc và trạng thái active.
+     */
     @Transactional
     public AuthResponse createArtist(RegisterRequest request) {
         String email = request.getEmail().trim().toLowerCase();
@@ -108,7 +120,7 @@ public class AuthService {
         MakeupArtist makeupArtist = MakeupArtist.builder()
                 .user(savedUser)
                 .experience(request.getExperience() != null ? request.getExperience() : "Chưa cập nhật kinh nghiệm")
-                .workingHours(request.getWorkingHours() != null ? request.getWorkingHours() : "08:00 - 20:00")
+                .workingHours(request.getWorkingHours() != null ? request.getWorkingHours() : "Cả ngày")
                 .workingDays(request.getWorkingDays() != null ? request.getWorkingDays() : "Thứ 2 - Chủ Nhật")
                 .active(true)
                 .build();
@@ -131,6 +143,10 @@ public class AuthService {
                 .build();
     }
 
+    /**
+     * Xác thực thông tin đăng nhập của người dùng qua Spring Security AuthenticationManager
+     * Kiểm tra tính hợp lệ của email và mật khẩu, trích xuất UserPrincipal và tạo chuỗi JWT token.
+     */
     public AuthResponse login(LoginRequest request) {
         String email = request.getEmail().trim().toLowerCase();
 

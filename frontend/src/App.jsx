@@ -37,12 +37,14 @@ import ArtistProfilePage from './pages/artist/ArtistProfilePage';
 import ArtistCollectionsPage from './pages/artist/ArtistCollectionsPage';
 
 import ProtectedRoute from './components/ProtectedRoute';
+import ScrollToTop from './components/ScrollToTop';
 
 function App() {
   return (
     <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
             {/* Customer Routes with MainLayout (Header & Footer) */}
             <Route path="/" element={<MainLayout />}>

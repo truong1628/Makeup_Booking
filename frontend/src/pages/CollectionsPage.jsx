@@ -200,13 +200,16 @@ const CollectionsPage = () => {
   const handleResumeBookingWithPortfolio = (portfolio) => {
     try {
       const raw = sessionStorage.getItem('makeup_booking_draft');
-      const draft = raw ? JSON.parse(raw) : { currentStep: 4 };
-      draft.currentStep = 4;
+      const draft = raw ? JSON.parse(raw) : {};
+      draft.currentStep = isFromBooking ? 4 : 1;
       if (portfolio) {
         draft.selectedPortfolioId = portfolio.id;
         draft.selectedPortfolioTitle = portfolio.title;
         draft.selectedPortfolioImage = portfolio.imageUrl;
         draft.selectedPortfolioArtist = portfolio.artistName;
+        if (portfolio.artistId) {
+          draft.preferredArtistId = portfolio.artistId;
+        }
 
         // Nếu portfolio có category hoặc từ khóa trùng với layout trong LAYOUT_OPTIONS, cập nhật layout tương ứng
         if (portfolio.categoryName) {
@@ -229,7 +232,8 @@ const CollectionsPage = () => {
     } catch (e) {
       console.error(e);
     }
-    navigate('/booking?resume=true');
+    const artistQuery = portfolio?.artistId ? `&artistId=${portfolio.artistId}` : '';
+    navigate(`/booking?resume=true${artistQuery}`);
   };
 
   // Get gallery images array for the active modal (Ưu tiên gallery từ bảng portfolio_images chuẩn 1NF)
@@ -494,122 +498,50 @@ const CollectionsPage = () => {
                     </div>
                   </div>
 
-                  {/* Dải ảnh phụ thu nhỏ ngay dưới ảnh chính (nếu có nhiều ảnh) */}
-                  {subImages.length > 0 && (
-                    <div className="px-4 pt-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDetail(item, 0)}
-                        className="w-10 h-10 rounded-lg overflow-hidden border-2 border-rose-500 shrink-0 relative cursor-pointer"
-                        title="Ảnh chính"
-                      >
-                        <img src={item.imageUrl} alt="Ảnh chính" className="w-full h-full object-cover" />
-                      </button>
-                      {subImages.slice(0, 4).map((subUrl, sIdx) => (
-                        <button
-                          key={sIdx}
-                          type="button"
-                          onClick={() => handleOpenDetail(item, sIdx + 1)}
-                          className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 hover:border-rose-400 shrink-0 relative opacity-85 hover:opacity-100 transition-all cursor-pointer"
-                          title={`Xem ảnh phụ #${sIdx + 1}`}
-                        >
-                          <img src={subUrl} alt={`Ảnh phụ ${sIdx + 1}`} className="w-full h-full object-cover" />
-                          {sIdx === 3 && subImages.length > 4 && (
-                            <div className="absolute inset-0 bg-black/65 flex items-center justify-center text-[10px] font-bold text-white">
-                              +{subImages.length - 4}
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
                   {/* Content details */}
-                  <div className="p-5 flex-1 flex flex-col justify-between">
+                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
                     <div>
+                      {/* Tên ảnh / layout */}
                       <h3
                         onClick={() => handleOpenDetail(item, 0)}
-                        className="text-base font-bold text-slate-800 line-clamp-1 hover:text-rose-600 cursor-pointer transition-colors mb-2"
+                        className="text-base font-bold text-slate-800 line-clamp-1 hover:text-rose-600 cursor-pointer transition-colors mb-3"
                         title={item.title}
                       >
                         {item.title}
                       </h3>
 
-                      {item.description && (
-                        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">
-                          {item.description}
-                        </p>
-                      )}
-
-                      {/* Tags */}
-                      {item.tags && (
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {item.tags.split(',').slice(0, 3).map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-100"
-                            >
-                              #{tag.trim()}
-                            </span>
-                          ))}
+                      {/* Thông tin Artist */}
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-rose-500 text-white font-bold flex items-center justify-center text-xs overflow-hidden shrink-0 shadow-sm">
+                          {item.artistAvatar ? (
+                            <img src={item.artistAvatar} alt={item.artistName} className="w-full h-full object-cover" />
+                          ) : (
+                            item.artistName?.charAt(0) || 'A'
+                          )}
                         </div>
-                      )}
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate">{item.artistName}</p>
+                          <p className="text-[10px] text-slate-400 truncate">
+                            {item.artistExperience || 'Chuyên gia Makeup'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Artist Info & Action Footer */}
-                    <div className="pt-3 border-t border-slate-100 space-y-3 mt-auto">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-rose-500 text-white font-bold flex items-center justify-center text-xs overflow-hidden shrink-0 shadow-sm">
-                            {item.artistAvatar ? (
-                              <img src={item.artistAvatar} alt={item.artistName} className="w-full h-full object-cover" />
-                            ) : (
-                              item.artistName?.charAt(0) || 'A'
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-800 truncate">{item.artistName}</p>
-                            <p className="text-[10px] text-slate-400 truncate">
-                              {item.artistExperience || 'Chuyên gia Makeup'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDetail(item, 0)}
-                          className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-600 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                          title="Xem chi tiết và toàn bộ ảnh của tác phẩm"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-rose-500" />
-                          <span>Chi tiết</span>
-                        </button>
-                      </div>
-
-                      {isFromBooking ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleResumeBookingWithPortfolio(item);
-                          }}
-                          className="w-full py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs group cursor-pointer"
-                          title="Tiếp tục đặt lịch với mẫu này"
-                        >
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>Tiếp tục đặt lịch với mẫu này</span>
-                          <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                        </button>
-                      ) : (
-                        <Link
-                          to={`/booking?artistId=${item.artistId || ''}`}
-                          className="w-full py-2 px-3 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white text-xs font-semibold transition-all shadow-2xs flex items-center justify-center gap-1.5"
-                          title="Đặt lịch với thợ này"
-                        >
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>Đặt lịch với chuyên viên</span>
-                        </Link>
-                      )}
+                    {/* Nút Đặt lịch ngay */}
+                    <div className="pt-4 border-t border-slate-100 mt-4">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleResumeBookingWithPortfolio(item);
+                        }}
+                        className="w-full py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer group"
+                        title="Đặt lịch ngay với phong cách này"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-rose-500 group-hover:text-white transition-colors" />
+                        <span>Đặt lịch ngay</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -645,21 +577,14 @@ const CollectionsPage = () => {
                   </div>
                 )}
 
-                {/* Badges on image: Ảnh Chính / Ảnh Phụ + Số thứ tự */}
-                <div className="absolute top-4 left-4 flex flex-wrap items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold shadow ${
-                    activeImageIndex === 0
-                      ? 'bg-amber-400 text-slate-950'
-                      : 'bg-black/70 backdrop-blur-md text-white border border-white/20'
-                  }`}>
-                    {activeImageIndex === 0 ? '★ Ảnh Chính' : `Ảnh Phụ #${activeImageIndex}`}
-                  </span>
-                  {modalImages.length > 1 && (
-                    <span className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-xs font-semibold">
+                {/* Badge số thứ tự ảnh ở góc trên bên trái (vd: 1/4) */}
+                {modalImages.length > 1 && (
+                  <div className="absolute top-4 left-4">
+                    <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-xs font-semibold shadow border border-white/10">
                       {activeImageIndex + 1} / {modalImages.length}
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 <div className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-rose-300 text-xs font-medium">
                   <Eye className="w-3.5 h-3.5" />
@@ -707,11 +632,6 @@ const CollectionsPage = () => {
                       title={idx === 0 ? 'Ảnh chính' : `Ảnh phụ #${idx}`}
                     >
                       <img src={img} alt="" className="w-full h-full object-cover" />
-                      {idx === 0 && (
-                        <span className="absolute bottom-0 inset-x-0 bg-amber-400 text-slate-950 text-[8px] font-extrabold text-center">
-                          CHÍNH
-                        </span>
-                      )}
                     </button>
                   ))}
                 </div>

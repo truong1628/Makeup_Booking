@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { authStorage } from '../utils/authStorage';
 
 const ArtistLayout = () => {
-  const { user, logout } = useAuth();
+  const { user, requestLogout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -22,8 +22,7 @@ const ArtistLayout = () => {
   }
 
   const handleLogout = () => {
-    logout();
-    navigate('/login');
+    requestLogout(() => navigate('/login'));
   };
 
   const navItems = [

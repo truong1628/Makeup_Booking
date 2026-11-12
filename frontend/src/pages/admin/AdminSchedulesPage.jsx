@@ -16,7 +16,7 @@ const FALLBACK_ARTISTS = [
     fullName: 'Nguyễn Thùy Linh',
     phone: '0901234567',
     email: 'thuylinh@makeup.com',
-    workingHours: '08:00 - 20:00',
+    workingHours: 'Cả ngày',
     workingDays: 'Thứ 2 - Chủ Nhật',
     active: true,
   },
@@ -25,7 +25,7 @@ const FALLBACK_ARTISTS = [
     fullName: 'Phạm Quỳnh Chi',
     phone: '0912345678',
     email: 'quynhchi@makeup.com',
-    workingHours: '08:00 - 20:00',
+    workingHours: 'Cả ngày',
     workingDays: 'Thứ 2 - Thứ 7',
     active: true,
   },
@@ -34,7 +34,7 @@ const FALLBACK_ARTISTS = [
     fullName: 'Lê Hoàng Yến',
     phone: '0923456789',
     email: 'hoangyen@makeup.com',
-    workingHours: '07:30 - 21:00',
+    workingHours: 'Cả ngày',
     workingDays: 'Thứ 2 - Chủ Nhật',
     active: true,
   },
@@ -43,7 +43,7 @@ const FALLBACK_ARTISTS = [
     fullName: 'Trần Mai Anh',
     phone: '0934567890',
     email: 'maianh@makeup.com',
-    workingHours: '08:00 - 19:30',
+    workingHours: 'Cả ngày',
     workingDays: 'Thứ 3 - Chủ Nhật',
     active: true,
   }
@@ -207,8 +207,8 @@ const AdminSchedulesPage = () => {
         artistId: artist.id,
         scheduleDate: dateStr,
         isDayOff: willBeDayOff,
-        startTime: currentSchedule?.startTime || '08:00:00',
-        endTime: currentSchedule?.endTime || '20:00:00'
+        startTime: currentSchedule?.startTime || '00:00:00',
+        endTime: currentSchedule?.endTime || '23:59:59'
       });
 
       // Cập nhật State cục bộ ngay lập tức
@@ -223,8 +223,8 @@ const AdminSchedulesPage = () => {
           artistName: artist.fullName,
           scheduleDate: dateStr,
           isDayOff: willBeDayOff,
-          startTime: currentSchedule?.startTime || '08:00:00',
-          endTime: currentSchedule?.endTime || '20:00:00'
+          startTime: currentSchedule?.startTime || '00:00:00',
+          endTime: currentSchedule?.endTime || '23:59:59'
         };
 
         if (existingIndex >= 0) {
@@ -279,8 +279,8 @@ const AdminSchedulesPage = () => {
           artistId: batchForm.artistId,
           scheduleDate: dateStr,
           isDayOff: batchForm.isDayOff,
-          startTime: '08:00:00',
-          endTime: '20:00:00'
+          startTime: '00:00:00',
+          endTime: '23:59:59'
         });
 
         // Cập nhật State
@@ -293,8 +293,8 @@ const AdminSchedulesPage = () => {
             artistId: batchForm.artistId,
             scheduleDate: dateStr,
             isDayOff: batchForm.isDayOff,
-            startTime: '08:00:00',
-            endTime: '20:00:00'
+            startTime: '00:00:00',
+            endTime: '23:59:59'
           };
           if (existingIndex >= 0) {
             const copy = [...prev];
@@ -390,9 +390,6 @@ const AdminSchedulesPage = () => {
             <h1 className="font-serif text-2xl sm:text-3xl font-bold text-white tracking-tight">
               Bảng Lịch Làm Việc & Quản Lý Ngày Nghỉ
             </h1>
-            <span className="hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-500/10 text-purple-300 border border-purple-500/30">
-              Ma Trận Theo Chuyên Viên
-            </span>
           </div>
           <p className="text-slate-400 text-xs sm:text-sm mt-1">
             Bảng điều phối ca làm việc. Đánh dấu ngày nghỉ để hệ thống tự động khóa slot không cho khách đặt lịch trực tuyến.
@@ -731,7 +728,7 @@ const AdminSchedulesPage = () => {
                             <div className="flex items-center gap-2 text-[10px] text-slate-500">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3 text-slate-500" />
-                                {artist.workingHours || '08:00 - 20:00'}
+                                {(artist.workingHours && !/\d{2}:\d{2}/.test(artist.workingHours)) ? artist.workingHours : 'Cả ngày'}
                               </span>
                               {artist.phone && <span>• {artist.phone}</span>}
                             </div>
@@ -796,8 +793,11 @@ const AdminSchedulesPage = () => {
                                   <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
                                     <Clock className="w-2.5 h-2.5 text-slate-500" />
                                     <span>
-                                      {schedule?.startTime ? schedule.startTime.substring(0, 5) : '08:00'} -{' '}
-                                      {schedule?.endTime ? schedule.endTime.substring(0, 5) : '20:00'}
+                                      {!schedule?.startTime ||
+                                      (schedule.startTime.startsWith('00:00') && schedule.endTime?.startsWith('23:59')) ||
+                                      (schedule.startTime.startsWith('08:00') && schedule.endTime?.startsWith('20:00'))
+                                        ? 'Cả ngày'
+                                        : `${schedule.startTime.substring(0, 5)} - ${schedule.endTime.substring(0, 5)}`}
                                     </span>
                                   </div>
                                   <div className="text-[9px] text-slate-400 opacity-0 group-hover/cell:opacity-100 transition-opacity flex items-center justify-center gap-1 mt-1 text-rose-400 font-semibold">

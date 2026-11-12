@@ -68,7 +68,7 @@ const AdminDashboardPage = () => {
       color: 'from-amber-500 to-orange-500',
     },
     {
-      title: 'Chuyên Gia Makeup Active',
+      title: 'Chuyên Viên Makeup',
       value: activeArtistsCount,
       change: 'Sẵn sàng nhận lịch',
       icon: Users,

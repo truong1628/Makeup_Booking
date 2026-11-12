@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { 
-  Calendar, Clock, MapPin, Building2, Home, Sparkles, 
-  ChevronDown, ChevronUp, CheckCircle2, CreditCard, Star, 
+import {
+  Calendar, Clock, MapPin, Building2, Home, Sparkles,
+  ChevronDown, ChevronUp, CheckCircle2, CreditCard, Star,
   RefreshCw, X, Heart, AlertTriangle,
   Palette, Eye, EyeOff, Landmark, ArrowDownLeft, ArrowUpDown, Pencil, Save, Phone
 } from 'lucide-react';
@@ -189,7 +189,7 @@ const MyBookingsPage = () => {
   const handleConfirmCancel = async () => {
     if (!selectedBookingForCancel) return;
 
-    const isDeposited = selectedBookingForCancel.paymentStatus === 'PAID' || 
+    const isDeposited = selectedBookingForCancel.paymentStatus === 'PAID' ||
       (selectedBookingForCancel.depositAmount > 0 && selectedBookingForCancel.paymentMethod !== 'CASH' && selectedBookingForCancel.status !== 'PENDING_PAYMENT');
 
     const baseReason = cancelReason === 'Khác' ? (customCancelReason.trim() || 'Lý do khác') : cancelReason;
@@ -448,26 +448,24 @@ const MyBookingsPage = () => {
             const count = tab.key === 'ALL'
               ? bookings.length
               : bookings.filter((b) => {
-                  const isCancelled = checkIsCancelled(b);
-                  const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
-                  return effectiveStatus === tab.key;
-                }).length;
+                const isCancelled = checkIsCancelled(b);
+                const effectiveStatus = isCancelled ? 'CANCELLED' : b.status;
+                return effectiveStatus === tab.key;
+              }).length;
 
             return (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                  activeTab === tab.key
+                className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${activeTab === tab.key
                     ? 'bg-rose-600 text-white shadow-xs shadow-rose-500/20'
                     : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 <span>{tab.label}</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                  activeTab === tab.key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                }`}>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${activeTab === tab.key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}>
                   {count}
                 </span>
               </button>
@@ -559,11 +557,10 @@ const MyBookingsPage = () => {
             return (
               <div
                 key={booking.id}
-                className={`bg-white rounded-3xl border transition-all ${
-                  isExpanded
+                className={`bg-white rounded-3xl border transition-all ${isExpanded
                     ? 'border-rose-300 shadow-md ring-1 ring-rose-500/10'
                     : 'border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm'
-                }`}
+                  }`}
               >
                 {/* ======================================================== */}
                 {/* 1. COMPACT CARD VIEW (LUÔN HIỂN THỊ TÓM TẮT GỌN GÀNG) */}
@@ -660,7 +657,11 @@ const MyBookingsPage = () => {
                           {formatCurrency(booking.totalPrice)}
                         </span>
                       </div>
-                      {booking.paymentMethod === 'CASH' ? (
+                      {booking.isFullyPaid || (booking.notes && booking.notes.includes('[ĐÃ THU ĐỦ TIỀN')) ? (
+                        <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
+                          ✓ Đã thanh toán đủ
+                        </span>
+                      ) : booking.paymentMethod === 'CASH' && booking.locationType !== 'HOME' ? (
                         <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200">
                           Thanh toán Studio
                         </span>
@@ -691,11 +692,10 @@ const MyBookingsPage = () => {
                       type="button"
                       id={`btn-toggle-detail-${booking.id}`}
                       onClick={() => toggleExpand(booking.id)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
-                        isExpanded
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${isExpanded
                           ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                           : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                      }`}
+                        }`}
                     >
                       {isExpanded ? (
                         <>
@@ -764,7 +764,7 @@ const MyBookingsPage = () => {
                         </button>
                       )}
 
-                      {booking.paymentMethod === 'CASH' && booking.status === 'CONFIRMED' && (
+                      {!booking.isFullyPaid && booking.paymentMethod === 'CASH' && booking.locationType !== 'HOME' && booking.status === 'CONFIRMED' && (
                         <button
                           type="button"
                           id={`btn-upgrade-deposit-${booking.id}`}
@@ -939,7 +939,7 @@ const MyBookingsPage = () => {
                             ) : (
                               <>
                                 <Building2 className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                                <span>Tại Studio MNM (204 Trần Duy Hưng, Cầu Giấy, Hà Nội)</span>
+                                <span>Tại Studio DungDorys (204 Trần Duy Hưng, Cầu Giấy, Hà Nội)</span>
                               </>
                             )}
                           </div>
@@ -971,7 +971,33 @@ const MyBookingsPage = () => {
                                 </div>
                               )}
                             </div>
-                          ) : booking.paymentMethod === 'CASH' ? (
+                          ) : (booking.isFullyPaid || (booking.notes && booking.notes.includes('[ĐÃ THU ĐỦ TIỀN'))) ? (
+                            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                              <div className="flex justify-between font-semibold text-emerald-700">
+                                <span>Trạng thái thanh toán:</span>
+                                <span className="font-bold">Đã thanh toán đủ (100%)</span>
+                              </div>
+                              {booking.depositAmount > 0 && (booking.paymentMethod === 'VNPAY' || booking.locationType === 'HOME') ? (
+                                <>
+                                  <div className="flex justify-between text-slate-600 text-[11px]">
+                                    <span>Đã cọc trước (30% VNPay):</span>
+                                    <span className="font-sans font-semibold text-emerald-700">{formatCurrency(booking.depositAmount)}</span>
+                                  </div>
+                                  <div className="flex justify-between text-slate-600 text-[11px]">
+                                    <span>Phần còn lại đã thu (70%):</span>
+                                    <span className="font-sans font-semibold text-slate-800">{formatCurrency(Math.max(0, booking.totalPrice - booking.depositAmount))}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex justify-between text-slate-600 text-[11px]">
+                                  <span>Hình thức:</span>
+                                  <span className="font-medium text-slate-800">
+                                    {booking.locationType === 'HOME' ? 'Thu đủ trực tiếp tại nhà' : 'Thanh toán tại Studio'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : booking.paymentMethod === 'CASH' && booking.locationType !== 'HOME' ? (
                             <div className="space-y-2 pt-2 border-t border-slate-100">
                               <div className="flex justify-between font-semibold text-amber-800">
                                 <span>Hình thức:</span>
@@ -989,7 +1015,7 @@ const MyBookingsPage = () => {
                               </div>
                               <div className="flex justify-between text-slate-500 text-[11px]">
                                 <span>Còn lại sau dịch vụ (70%):</span>
-                                <span className="font-sans font-medium">{formatCurrency(booking.totalPrice - booking.depositAmount)}</span>
+                                <span className="font-sans font-medium">{formatCurrency(Math.max(0, booking.totalPrice - booking.depositAmount))}</span>
                               </div>
                             </div>
                           )}
@@ -1138,7 +1164,7 @@ const MyBookingsPage = () => {
       {/* CANCEL & REFUND BOOKING MODAL */}
       {/* ======================================================== */}
       {cancelModalOpen && selectedBookingForCancel && (() => {
-        const isDeposited = selectedBookingForCancel.paymentStatus === 'PAID' || 
+        const isDeposited = selectedBookingForCancel.paymentStatus === 'PAID' ||
           (selectedBookingForCancel.depositAmount > 0 && selectedBookingForCancel.paymentMethod !== 'CASH' && selectedBookingForCancel.status !== 'PENDING_PAYMENT');
 
         return (
@@ -1146,9 +1172,8 @@ const MyBookingsPage = () => {
             <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-lg w-full p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
-                    isDeposited ? 'bg-amber-100 text-amber-700' : 'bg-red-50 text-red-600'
-                  }`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${isDeposited ? 'bg-amber-100 text-amber-700' : 'bg-red-50 text-red-600'
+                    }`}>
                     {isDeposited ? <Landmark className="w-5 h-5 text-amber-600" /> : <AlertTriangle className="w-5 h-5 text-red-500" />}
                   </div>
                   <div>
@@ -1258,11 +1283,10 @@ const MyBookingsPage = () => {
                   ].map((reason) => (
                     <label
                       key={reason}
-                      className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
-                        cancelReason === reason
+                      className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${cancelReason === reason
                           ? 'border-rose-500 bg-rose-50/40 text-rose-900 font-semibold'
                           : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-                      }`}
+                        }`}
                     >
                       <input
                         type="radio"
@@ -1360,11 +1384,10 @@ const MyBookingsPage = () => {
                       className="p-1.5 transition-transform hover:scale-110 focus:outline-none"
                     >
                       <Star
-                        className={`w-7 h-7 ${
-                          star <= reviewRating
+                        className={`w-7 h-7 ${star <= reviewRating
                             ? 'text-amber-500 fill-amber-500'
                             : 'text-slate-200'
-                        }`}
+                          }`}
                       />
                     </button>
                   ))}
@@ -1532,11 +1555,10 @@ const MyBookingsPage = () => {
                       onClick={() =>
                         setEditFormData((prev) => ({ ...prev, layout: preset }))
                       }
-                      className={`text-[11px] px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
-                        editFormData.layout === preset
+                      className={`text-[11px] px-2.5 py-1 rounded-full border transition-all cursor-pointer ${editFormData.layout === preset
                           ? 'bg-rose-600 text-white border-rose-600 font-semibold'
                           : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-600'
-                      }`}
+                        }`}
                     >
                       {preset}
                     </button>

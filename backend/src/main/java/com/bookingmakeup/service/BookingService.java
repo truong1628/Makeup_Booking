@@ -52,6 +52,10 @@ public class BookingService {
     private final VoucherRepository voucherRepository;
     private final VoucherService voucherService;
 
+    /**
+     * Kiểm tra nhanh độ khả dụng khung giờ của thợ trang điểm (trả về true/false,
+     * không ném ngoại lệ)
+     */
     @Transactional(readOnly = true)
     public boolean checkSlotAvailability(Long artistId, LocalDate date, LocalTime startTime, LocalTime endTime) {
         try {
@@ -62,6 +66,11 @@ public class BookingService {
         }
     }
 
+    /**
+     * Xác thực tính khả dụng của slot làm việc của chuyên viên
+     * Kiểm tra trạng thái hoạt động của thợ, ngày nghỉ trong ArtistSchedule và xung
+     * đột trùng giờ với các đơn hẹn khác.
+     */
     @Transactional(readOnly = true)
     public void validateSlotAvailability(Long artistId, LocalDate date, LocalTime startTime, LocalTime endTime) {
         MakeupArtist artist = makeupArtistRepository.findById(artistId)
@@ -72,7 +81,8 @@ public class BookingService {
         }
 
         // 1. Kiểm tra ngày nghỉ hoặc giờ làm việc trong ArtistSchedule
-        Optional<ArtistSchedule> scheduleOpt = artistScheduleRepository.findByMakeupArtistIdAndScheduleDate(artistId, date);
+        Optional<ArtistSchedule> scheduleOpt = artistScheduleRepository.findByMakeupArtistIdAndScheduleDate(artistId,
+                date);
         if (scheduleOpt.isPresent()) {
             ArtistSchedule schedule = scheduleOpt.get();
             if (Boolean.TRUE.equals(schedule.getIsDayOff())) {
@@ -99,7 +109,8 @@ public class BookingService {
         LocalDate startOfMonth = date.withDayOfMonth(1);
         LocalDate endOfMonth = date.withDayOfMonth(date.lengthOfMonth());
 
-        List<Object[]> results = bookingItemRepository.countDistinctBookingsByArtistInDateRange(startOfMonth, endOfMonth);
+        List<Object[]> results = bookingItemRepository.countDistinctBookingsByArtistInDateRange(startOfMonth,
+                endOfMonth);
         Map<Long, Long> counts = new HashMap<>();
         if (results != null) {
             for (Object[] row : results) {
@@ -125,13 +136,18 @@ public class BookingService {
     }
 
     /**
-     * Thuật toán cân bằng tải công việc giữa các chuyên viên trong tháng (Fair Share Workload Distribution):
-     * - Mục tiêu: Đảm bảo trong 1 tháng, tất cả chuyên viên đều nhận số lượng lịch đều nhau (ví dụ: Dung 10 lịch thì các thợ khác 9 hoặc 10 lịch).
+     * Thuật toán cân bằng tải công việc giữa các chuyên viên trong tháng (Fair
+     * Share Workload Distribution):
+     * - Mục tiêu: Đảm bảo trong 1 tháng, tất cả chuyên viên đều nhận số lượng lịch
+     * đều nhau (ví dụ: Dung 10 lịch thì các thợ khác 9 hoặc 10 lịch).
      * - Cơ chế:
-     *   1. Đếm số đơn đặt lịch (DISTINCT bookings, không tính đơn hủy) mà mỗi thợ phụ trách trong tháng của bookingDate.
-     *   2. Ưu tiên chuyên viên có số đơn trong tháng THẤP NHẤT nhận lịch tiếp theo.
-     *   3. Nếu số đơn trong tháng bằng nhau: Ưu tiên chuyên viên có tổng số đơn từ trước đến nay thấp hơn.
-     *   4. Nếu vẫn bằng nhau: Sắp xếp theo ID tăng dần để đảm bảo tính nhất quán (deterministic).
+     * 1. Đếm số đơn đặt lịch (DISTINCT bookings, không tính đơn hủy) mà mỗi thợ phụ
+     * trách trong tháng của bookingDate.
+     * 2. Ưu tiên chuyên viên có số đơn trong tháng THẤP NHẤT nhận lịch tiếp theo.
+     * 3. Nếu số đơn trong tháng bằng nhau: Ưu tiên chuyên viên có tổng số đơn từ
+     * trước đến nay thấp hơn.
+     * 4. Nếu vẫn bằng nhau: Sắp xếp theo ID tăng dần để đảm bảo tính nhất quán
+     * (deterministic).
      */
     private Comparator<MakeupArtist> createFairWorkloadComparator(LocalDate targetDate) {
         Map<Long, Long> monthlyCounts = getMonthlyBookingCountPerArtist(targetDate);
@@ -153,7 +169,8 @@ public class BookingService {
     }
 
     /**
-     * Ước tính các phương án điều phối thợ theo số người và thời gian hoàn thành (Model 2)
+     * Ước tính các phương án điều phối thợ theo số người và thời gian hoàn thành
+     * (Model 2)
      */
     @Transactional(readOnly = true)
     public List<DispatchOptionResponse> estimateDispatchOptions(DispatchEstimateRequest request) {
@@ -173,7 +190,8 @@ public class BookingService {
                     .orElseThrow(() -> new ResourceNotFoundException("MakeupService", "id", item.getServiceId()));
             int qty = (item.getQuantity() != null && item.getQuantity() > 0) ? item.getQuantity() : 1;
             for (int i = 0; i < qty; i++) {
-                allTasks.add(new ServiceTask(service.getId(), service.getServiceName(), service.getDuration(), service.getPrice()));
+                allTasks.add(new ServiceTask(service.getId(), service.getServiceName(), service.getDuration(),
+                        service.getPrice()));
                 totalServicesPrice = totalServicesPrice.add(service.getPrice());
             }
         }
@@ -182,111 +200,96 @@ public class BookingService {
             throw new BadRequestException("Vui lòng chọn ít nhất 1 dịch vụ");
         }
 
-        List<DispatchOptionResponse> options = new ArrayList<>();
+        int maxActive = activeArtists.size();
+        int totalTasksCount = allTasks.size();
 
-        // 3 Gói điều phối: SAVING (1 thợ), BALANCED (2 thợ), SPEED (3 thợ hoặc tối đa)
-        int maxAvailable = activeArtists.size();
-        int[] targetCounts = new int[]{1, Math.min(2, maxAvailable), Math.min(3, maxAvailable)};
-        String[] planCodes = new String[]{"SAVING", "BALANCED", "SPEED"};
-        String[] planNames = new String[]{
-                "Gói Tiết Kiệm",
-                "Gói Tiêu Chuẩn",
-                "Gói Xong Nhanh"
-        };
-        String[] badges = new String[]{
-                "Tiết kiệm 15% chi phí",
-                "Khuyên dùng cho nhóm 3-6 người",
-                "Hoàn thành cấp tốc & Thảnh thơi"
-        };
-        String[] descriptions = new String[]{
-                "1 chuyên viên phục vụ lần lượt từng người, giảm ngay 15% tổng giá dịch vụ.",
-                "2 chuyên viên cùng thực hiện song song (makeup + làm tóc), rút ngắn ~40% thời gian chờ.",
-                "Ekip 3 chuyên viên làm đồng loạt hỏa tốc (mặt + tóc + phụ tá), hoàn thành nhanh nhất."
-        };
+        // 1. Tính Gói Tiết Kiệm (SAVING - luôn là 1 chuyên viên)
+        DispatchOptionResponse savingOpt = buildDispatchOption(
+                request, activeArtists, allTasks, totalServicesPrice,
+                "SAVING", "Gói Tiết Kiệm", 1);
 
-        Set<Integer> createdCounts = new HashSet<>();
-        for (int p = 0; p < 3; p++) {
-            int k = targetCounts[p];
-            if (p > 0 && createdCounts.contains(k)) {
-                // Nếu studio không đủ số thợ phân biệt (vd chỉ có 1 hoặc 2 thợ), tránh lặp lại gói giống hệt
-                continue;
-            }
-            createdCounts.add(k);
+        // 2. Tính Gói Xong Nhanh (SPEED) trước để xác định chính xác số lượng thợ thực sự rảnh tối đa (actualSpeedK)
+        int idealSpeedK = (totalTasksCount <= 3)
+                ? Math.min(3, maxActive)
+                : Math.min(maxActive, totalTasksCount);
 
-            // Phân bổ công việc vào k hàng đợi để tính toán thời lượng chính xác
-            List<ArtistQueue> queues = new ArrayList<>();
-            for (int i = 0; i < k; i++) {
-                queues.add(new ArtistQueue(null));
-            }
+        DispatchOptionResponse speedOpt = null;
+        if (idealSpeedK > 1) {
+            speedOpt = buildDispatchOption(
+                    request, activeArtists, allTasks, totalServicesPrice,
+                    "SPEED", "Gói Xong Nhanh", idealSpeedK);
+        }
 
-            int totalTasksCount = allTasks.size();
+        // Số thợ thực tế rảnh của gói SPEED sau khi kiểm tra lịch nghỉ & xung đột khung giờ
+        int actualSpeedK = speedOpt != null ? speedOpt.getArtistCount() : 1;
 
+        // 3. Tính Gói Tiêu Chuẩn (BALANCED) dựa trên lực lượng rảnh thực tế (actualSpeedK)
+        // Đảm bảo nếu có >= 3 thợ rảnh thì BALANCED < SPEED (vd: 3 rảnh -> BALANCED=2, SPEED=3; 5 rảnh -> BALANCED=3, SPEED=5)
+        DispatchOptionResponse balancedOpt = null;
+        if (actualSpeedK >= 2) {
+            int balancedK;
             if (totalTasksCount == 1) {
-                // Trường hợp 1 người (1 dịch vụ chính, ví dụ Trang điểm Cô dâu Ngày Cưới):
-                ServiceTask baseTask = allTasks.get(0);
-                if (k == 1) {
-                    queues.get(0).tasks.add(baseTask);
-                    queues.get(0).totalDuration += baseTask.duration();
-                } else if (k == 2) {
-                    // 2 thợ phục vụ song song: 1 thợ makeup mặt, 1 thợ làm tóc -> Rút ngắn còn ~60% thời gian
-                    int d1 = Math.max(30, (int) Math.round(baseTask.duration() * 0.60));
-                    int d2 = Math.max(25, (int) Math.round(baseTask.duration() * 0.50));
-                    queues.get(0).tasks.add(new ServiceTask(baseTask.serviceId(), baseTask.serviceName() + " (Trang điểm mặt)", d1, baseTask.price()));
-                    queues.get(0).totalDuration += d1;
-
-                    queues.get(1).tasks.add(new ServiceTask(baseTask.serviceId(), "Tạo kiểu tóc & Cài phụ kiện (Song song)", d2, BigDecimal.ZERO));
-                    queues.get(1).totalDuration += d2;
-                } else {
-                    // 3 thợ phục vụ hỏa tốc: Thợ makeup chính + Thợ tóc + Trợ lý trang phục/body -> Rút ngắn còn ~40% thời gian
-                    int d1 = Math.max(25, (int) Math.round(baseTask.duration() * 0.40));
-                    int d2 = Math.max(20, (int) Math.round(baseTask.duration() * 0.35));
-                    int d3 = Math.max(15, (int) Math.round(baseTask.duration() * 0.30));
-                    queues.get(0).tasks.add(new ServiceTask(baseTask.serviceId(), baseTask.serviceName() + " (Trang điểm mặt chính)", d1, baseTask.price()));
-                    queues.get(0).totalDuration += d1;
-
-                    queues.get(1).tasks.add(new ServiceTask(baseTask.serviceId(), "Tạo kiểu tóc cao cấp (Song song)", d2, BigDecimal.ZERO));
-                    queues.get(1).totalDuration += d2;
-
-                    queues.get(2).tasks.add(new ServiceTask(baseTask.serviceId(), "Trang điểm body & Trợ lý trang phục", d3, BigDecimal.ZERO));
-                    queues.get(2).totalDuration += d3;
-                }
+                balancedK = Math.min(2, actualSpeedK);
+            } else if (actualSpeedK == 2) {
+                balancedK = 2;
             } else {
-                // Trường hợp nhóm nhiều người (>= 2 người):
-                List<ServiceTask> sortedTasks = new ArrayList<>(allTasks);
-                sortedTasks.sort((a, b) -> Integer.compare(b.duration(), a.duration()));
-
-                for (ServiceTask task : sortedTasks) {
-                    ArtistQueue minQueue = queues.stream().min(Comparator.comparingInt(q -> q.totalDuration)).orElse(queues.get(0));
-                    minQueue.tasks.add(task);
-                    minQueue.totalDuration += task.duration();
-                }
-
-                // Nếu có thợ rảnh (ví dụ 2 khách mà chọn gói 3 thợ), thợ rảnh hỗ trợ ca dài nhất
-                for (ArtistQueue q : queues) {
-                    if (q.tasks.isEmpty()) {
-                        ArtistQueue maxQueue = queues.stream().max(Comparator.comparingInt(mq -> mq.totalDuration)).orElse(null);
-                        if (maxQueue != null && maxQueue.totalDuration > 35) {
-                            ServiceTask longest = maxQueue.tasks.get(0);
-                            int originalD = longest.duration();
-                            int assistD = Math.max(20, (int) Math.round(originalD * 0.45));
-                            int reducedD = Math.max(25, (int) Math.round(originalD * 0.60));
-                            maxQueue.tasks.set(0, new ServiceTask(longest.serviceId(), longest.serviceName() + " (Trang điểm mặt)", reducedD, longest.price()));
-                            maxQueue.totalDuration = maxQueue.totalDuration - originalD + reducedD;
-
-                            q.tasks.add(new ServiceTask(longest.serviceId(), "Hỗ trợ làm tóc cho " + longest.serviceName(), assistD, BigDecimal.ZERO));
-                            q.totalDuration += assistD;
-                        }
-                    }
+                balancedK = Math.max(2, (int) Math.round(actualSpeedK * 0.6));
+                if (balancedK >= actualSpeedK) {
+                    balancedK = actualSpeedK - 1;
                 }
             }
+            balancedOpt = buildDispatchOption(
+                    request, activeArtists, allTasks, totalServicesPrice,
+                    "BALANCED", "Gói Tiêu Chuẩn", balancedK);
+        }
 
-            int maxDurationMinutes = queues.stream().mapToInt(q -> q.totalDuration).max().orElse(60);
+        List<DispatchOptionResponse> options = new ArrayList<>();
+        Set<Integer> addedArtistCounts = new HashSet<>();
 
-            LocalTime planStartTime;
-            LocalTime planEndTime;
-            Boolean isLate = null;
-            Integer diffMinutes = null;
-            LocalTime recommendedStartTime = null;
+        if (savingOpt != null) {
+            options.add(savingOpt);
+            addedArtistCounts.add(savingOpt.getArtistCount());
+        }
+        if (balancedOpt != null && !addedArtistCounts.contains(balancedOpt.getArtistCount())) {
+            options.add(balancedOpt);
+            addedArtistCounts.add(balancedOpt.getArtistCount());
+        }
+        if (speedOpt != null && !addedArtistCounts.contains(speedOpt.getArtistCount())) {
+            options.add(speedOpt);
+        }
+
+        return options;
+    }
+
+    /**
+     * Dựng phương án điều phối chi tiết cho 1 gói cụ thể và tự động điều chỉnh k theo số thợ rảnh trong khung giờ
+     */
+    private DispatchOptionResponse buildDispatchOption(
+            DispatchEstimateRequest request,
+            List<MakeupArtist> activeArtists,
+            List<ServiceTask> allTasks,
+            BigDecimal totalServicesPrice,
+            String planCode,
+            String planName,
+            int initialK) {
+
+        int k = initialK;
+        int totalTasksCount = allTasks.size();
+
+        List<ArtistQueue> queues = null;
+        int maxDurationMinutes = 60;
+        LocalTime planStartTime = null;
+        LocalTime planEndTime = null;
+        Boolean isLate = null;
+        Integer diffMinutes = null;
+        LocalTime recommendedStartTime = null;
+        List<MakeupArtist> availableArtists = new ArrayList<>();
+        List<MakeupArtist> busyArtists = new ArrayList<>();
+
+        // Kiểm tra khả dụng & tự động điều chỉnh k theo số thợ thực sự rảnh trong khung giờ
+        for (int attempt = 0; attempt < 2; attempt++) {
+            queues = distributeTasksToQueues(allTasks, k);
+            maxDurationMinutes = queues.stream().mapToInt(q -> q.totalDuration).max().orElse(60);
 
             if (request.getBookingTime() != null) {
                 planStartTime = request.getBookingTime();
@@ -305,11 +308,14 @@ public class BookingService {
                 diffMinutes = targetMins - endMins;
                 isLate = diffMinutes < 0;
                 recommendedStartTime = request.getTargetEndTime().minusMinutes(maxDurationMinutes);
+            } else {
+                diffMinutes = null;
+                isLate = null;
+                recommendedStartTime = null;
             }
 
-            // Kiểm tra tình trạng rảnh/bận của chuyên viên trong khung giờ [planStartTime, planEndTime]
-            List<MakeupArtist> availableArtists = new ArrayList<>();
-            List<MakeupArtist> busyArtists = new ArrayList<>();
+            availableArtists.clear();
+            busyArtists.clear();
             for (MakeupArtist a : activeArtists) {
                 if (checkSlotAvailability(a.getId(), request.getBookingDate(), planStartTime, planEndTime)) {
                     availableArtists.add(a);
@@ -318,125 +324,224 @@ public class BookingService {
                 }
             }
 
-            // Sắp xếp chuyên viên theo thuật toán cân bằng tải công việc trong tháng (Fair Workload Balancing):
-            // Ưu tiên chuyên viên có ít đơn/lịch đặt nhất trong tháng (chênh lệch <= 1 lịch giữa các thợ)
-            Comparator<MakeupArtist> fairComparator = createFairWorkloadComparator(request.getBookingDate());
-            availableArtists.sort(fairComparator);
-            busyArtists.sort(fairComparator);
-
-            // Nếu studio có thợ rảnh nhưng số lượng thợ rảnh không đủ k thợ cho gói này -> bỏ qua gói này
             if (!availableArtists.isEmpty() && k > availableArtists.size()) {
-                continue;
+                // Nếu số thợ rảnh trong khung giờ ít hơn dự kiến, tự động hạ k xuống đúng số thợ rảnh tối đa
+                k = availableArtists.size();
+            } else {
+                break;
             }
+        }
 
-            List<MakeupArtist> candidateArtists = new ArrayList<>();
-            if (request.getPreferredArtistId() != null) {
-                availableArtists.stream()
-                        .filter(a -> a.getId().equals(request.getPreferredArtistId()))
-                        .findFirst()
-                        .ifPresent(candidateArtists::add);
-            }
-            // Ưu tiên cao nhất: tất cả các chuyên viên ĐANG RẢNH (chưa có lịch hẹn)
-            for (MakeupArtist a : availableArtists) {
-                if (!candidateArtists.contains(a)) {
-                    candidateArtists.add(a);
-                }
-            }
-            for (MakeupArtist a : busyArtists) {
-                if (!candidateArtists.contains(a)) {
-                    candidateArtists.add(a);
-                }
-            }
+        if (!availableArtists.isEmpty() && k > availableArtists.size()) {
+            return null;
+        }
 
-            for (int i = 0; i < k; i++) {
-                queues.get(i).artist = candidateArtists.get(i % candidateArtists.size());
+        // Sắp xếp chuyên viên theo thuật toán cân bằng tải công việc trong tháng (Fair Workload Balancing)
+        Comparator<MakeupArtist> fairComparator = createFairWorkloadComparator(request.getBookingDate());
+        availableArtists.sort(fairComparator);
+        busyArtists.sort(fairComparator);
+
+        List<MakeupArtist> candidateArtists = new ArrayList<>();
+        if (request.getPreferredArtistId() != null) {
+            availableArtists.stream()
+                    .filter(a -> a.getId().equals(request.getPreferredArtistId()))
+                    .findFirst()
+                    .ifPresent(candidateArtists::add);
+        }
+        // Ưu tiên cao nhất: tất cả các chuyên viên ĐANG RẢNH (chưa có lịch hẹn)
+        for (MakeupArtist a : availableArtists) {
+            if (!candidateArtists.contains(a)) {
+                candidateArtists.add(a);
             }
-
-            // Tính phụ phí theo Model 2
-            // 1. Phụ phí điều phối thợ cấp tốc (gói SPEED): +15% giá dịch vụ
-            BigDecimal rushFee = BigDecimal.ZERO;
-            if ("SPEED".equals(planCodes[p]) || k >= 3) {
-                rushFee = totalServicesPrice.multiply(BigDecimal.valueOf(0.15)).setScale(-3, RoundingMode.HALF_UP);
-                if (rushFee.compareTo(BigDecimal.valueOf(100000)) < 0) {
-                    rushFee = BigDecimal.valueOf(100000);
-                }
+        }
+        for (MakeupArtist a : busyArtists) {
+            if (!candidateArtists.contains(a)) {
+                candidateArtists.add(a);
             }
+        }
 
-            // 2. Chiết khấu giảm 15% cho gói Tiết Kiệm (SAVING) khi nhóm từ 2 người trở lên
-            BigDecimal discountAmount = BigDecimal.ZERO;
-            if ("SAVING".equals(planCodes[p]) && totalTasksCount >= 2) {
-                discountAmount = totalServicesPrice.multiply(BigDecimal.valueOf(0.15)).setScale(-3, RoundingMode.HALF_UP);
+        for (int i = 0; i < k; i++) {
+            queues.get(i).artist = candidateArtists.get(i % candidateArtists.size());
+        }
+
+        // Tính phụ phí theo Model 2
+        // 1. Phụ phí điều phối thợ cấp tốc: CHỈ áp dụng cho gói SPEED (+15% giá dịch vụ, tối thiểu 100k)
+        BigDecimal rushFee = BigDecimal.ZERO;
+        if ("SPEED".equals(planCode)) {
+            rushFee = totalServicesPrice.multiply(BigDecimal.valueOf(0.15)).setScale(-3, RoundingMode.HALF_UP);
+            if (rushFee.compareTo(BigDecimal.valueOf(100000)) < 0) {
+                rushFee = BigDecimal.valueOf(100000);
             }
+        }
 
-            // 3. Phụ phí làm sớm (Early Bird): nếu bắt đầu trước 06:00 sáng -> 50.000đ / thợ
-            BigDecimal earlyFee = BigDecimal.ZERO;
-            if (planStartTime.isBefore(LocalTime.of(6, 0))) {
-                earlyFee = BigDecimal.valueOf(50000L * k);
-            }
+        // 2. Chiết khấu giảm 15% cho gói Tiết Kiệm (SAVING) khi nhóm từ 2 người trở lên
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        if ("SAVING".equals(planCode) && totalTasksCount >= 2) {
+            discountAmount = totalServicesPrice.multiply(BigDecimal.valueOf(0.15)).setScale(-3,
+                    RoundingMode.HALF_UP);
+        }
 
-            BigDecimal totalSurcharge = rushFee.add(earlyFee);
-            BigDecimal totalPrice = totalServicesPrice.subtract(discountAmount).add(totalSurcharge);
-            if (totalPrice.compareTo(BigDecimal.ZERO) < 0) {
-                totalPrice = BigDecimal.ZERO;
-            }
-            BigDecimal depositAmount = totalPrice.multiply(BigDecimal.valueOf(0.3)).setScale(-3, RoundingMode.HALF_UP);
+        // 3. Phụ phí làm sớm (Early Bird): nếu bắt đầu trước 06:00 sáng -> 50.000đ / thợ
+        BigDecimal earlyFee = BigDecimal.ZERO;
+        if (planStartTime.isBefore(LocalTime.of(6, 0))) {
+            earlyFee = BigDecimal.valueOf(50000L * k);
+        }
 
-            // Dựng timeline cho từng thợ
-            List<DispatchOptionResponse.ArtistTimelineDto> timelineDtos = new ArrayList<>();
-            for (ArtistQueue q : queues) {
-                LocalTime pointer = planStartTime;
-                List<DispatchOptionResponse.SlotItemDto> slotDtos = new ArrayList<>();
-                for (ServiceTask t : q.tasks) {
-                    LocalTime slotEnd = pointer.plusMinutes(t.duration());
-                    slotDtos.add(DispatchOptionResponse.SlotItemDto.builder()
-                            .serviceId(t.serviceId())
-                            .serviceName(t.serviceName())
-                            .startTime(pointer)
-                            .endTime(slotEnd)
-                            .duration(t.duration())
-                            .price(t.price())
-                            .build());
-                    pointer = slotEnd;
-                }
+        BigDecimal totalSurcharge = rushFee.add(earlyFee);
+        BigDecimal totalPrice = totalServicesPrice.subtract(discountAmount).add(totalSurcharge);
+        if (totalPrice.compareTo(BigDecimal.ZERO) < 0) {
+            totalPrice = BigDecimal.ZERO;
+        }
+        BigDecimal depositAmount = totalPrice.multiply(BigDecimal.valueOf(0.3)).setScale(-3, RoundingMode.HALF_UP);
 
-                timelineDtos.add(DispatchOptionResponse.ArtistTimelineDto.builder()
-                        .artistId(q.artist.getId())
-                        .artistName(q.artist.getUser().getFullName())
-                        .avatar(q.artist.getUser().getAvatar())
-                        .startTime(planStartTime)
-                        .endTime(pointer)
-                        .slots(slotDtos)
+        String dynamicBadge;
+        String dynamicDesc;
+        if ("SAVING".equals(planCode)) {
+            dynamicBadge = totalTasksCount >= 2 ? "Tiết kiệm 15% chi phí" : "Tiêu chuẩn 1 chuyên viên";
+            dynamicDesc = "1 chuyên viên phục vụ lần lượt từng người, giảm ngay 15% tổng giá dịch vụ.";
+        } else if ("BALANCED".equals(planCode)) {
+            dynamicBadge = String.format("Phối hợp %d chuyên viên", k);
+            dynamicDesc = String.format("%d chuyên viên cùng thực hiện song song, cân bằng tối ưu thời gian và chi phí.", k);
+        } else {
+            dynamicBadge = String.format("Huy động tối đa %d chuyên viên", k);
+            dynamicDesc = String.format("Ekip %d chuyên viên làm đồng loạt hỏa tốc theo lực lượng rảnh, hoàn thành nhanh nhất.", k);
+        }
+
+        // Dựng timeline cho từng thợ
+        List<DispatchOptionResponse.ArtistTimelineDto> timelineDtos = new ArrayList<>();
+        for (ArtistQueue q : queues) {
+            LocalTime pointer = planStartTime;
+            List<DispatchOptionResponse.SlotItemDto> slotDtos = new ArrayList<>();
+            for (ServiceTask t : q.tasks) {
+                LocalTime slotEnd = pointer.plusMinutes(t.duration());
+                slotDtos.add(DispatchOptionResponse.SlotItemDto.builder()
+                        .serviceId(t.serviceId())
+                        .serviceName(t.serviceName())
+                        .startTime(pointer)
+                        .endTime(slotEnd)
+                        .duration(t.duration())
+                        .price(t.price())
                         .build());
+                pointer = slotEnd;
             }
 
-            options.add(DispatchOptionResponse.builder()
-                    .planCode(planCodes[p])
-                    .planName(planNames[p])
-                    .badge(badges[p])
-                    .description(descriptions[p])
-                    .artistCount(k)
-                    .availableArtistCount(availableArtists.size())
-                    .totalActiveArtists(activeArtists.size())
+            timelineDtos.add(DispatchOptionResponse.ArtistTimelineDto.builder()
+                    .artistId(q.artist.getId())
+                    .artistName(q.artist.getUser().getFullName())
+                    .avatar(q.artist.getUser().getAvatar())
                     .startTime(planStartTime)
-                    .endTime(planEndTime)
-                    .durationMinutes(maxDurationMinutes)
-                    .isLate(isLate)
-                    .diffMinutes(diffMinutes)
-                    .recommendedStartTime(recommendedStartTime)
-                    .servicesPrice(totalServicesPrice)
-                    .rushFee(rushFee)
-                    .earlyFee(earlyFee)
-                    .totalSurcharge(totalSurcharge)
-                    .discountAmount(discountAmount)
-                    .totalPrice(totalPrice)
-                    .depositAmount(depositAmount)
-                    .timelines(timelineDtos)
+                    .endTime(pointer)
+                    .slots(slotDtos)
                     .build());
         }
 
-        return options;
+        return DispatchOptionResponse.builder()
+                .planCode(planCode)
+                .planName(planName)
+                .badge(dynamicBadge)
+                .description(dynamicDesc)
+                .artistCount(k)
+                .availableArtistCount(availableArtists.size())
+                .totalActiveArtists(activeArtists.size())
+                .startTime(planStartTime)
+                .endTime(planEndTime)
+                .durationMinutes(maxDurationMinutes)
+                .isLate(isLate)
+                .diffMinutes(diffMinutes)
+                .recommendedStartTime(recommendedStartTime)
+                .servicesPrice(totalServicesPrice)
+                .rushFee(rushFee)
+                .earlyFee(earlyFee)
+                .totalSurcharge(totalSurcharge)
+                .discountAmount(discountAmount)
+                .totalPrice(totalPrice)
+                .depositAmount(depositAmount)
+                .timelines(timelineDtos)
+                .build();
     }
 
+    /**
+     * Phân bổ các dịch vụ vào k hàng đợi thợ bằng thuật toán Tham lam LPT (Longest Processing Time First)
+     */
+    private List<ArtistQueue> distributeTasksToQueues(List<ServiceTask> allTasks, int k) {
+        List<ArtistQueue> queues = new ArrayList<>();
+        for (int i = 0; i < k; i++) {
+            queues.add(new ArtistQueue(null));
+        }
+
+        int totalTasksCount = allTasks.size();
+        if (totalTasksCount == 1) {
+            ServiceTask baseTask = allTasks.get(0);
+            if (k == 1) {
+                queues.get(0).tasks.add(baseTask);
+                queues.get(0).totalDuration += baseTask.duration();
+            } else if (k == 2) {
+                int d1 = Math.max(30, (int) Math.round(baseTask.duration() * 0.60));
+                int d2 = Math.max(25, (int) Math.round(baseTask.duration() * 0.50));
+                queues.get(0).tasks.add(new ServiceTask(baseTask.serviceId(),
+                        baseTask.serviceName() + " (Trang điểm mặt)", d1, baseTask.price()));
+                queues.get(0).totalDuration += d1;
+
+                queues.get(1).tasks.add(new ServiceTask(baseTask.serviceId(),
+                        "Tạo kiểu tóc & Cài phụ kiện (Song song)", d2, BigDecimal.ZERO));
+                queues.get(1).totalDuration += d2;
+            } else {
+                int d1 = Math.max(25, (int) Math.round(baseTask.duration() * 0.40));
+                int d2 = Math.max(20, (int) Math.round(baseTask.duration() * 0.35));
+                int d3 = Math.max(15, (int) Math.round(baseTask.duration() * 0.30));
+                queues.get(0).tasks.add(new ServiceTask(baseTask.serviceId(),
+                        baseTask.serviceName() + " (Trang điểm mặt chính)", d1, baseTask.price()));
+                queues.get(0).totalDuration += d1;
+
+                queues.get(1).tasks.add(new ServiceTask(baseTask.serviceId(), "Tạo kiểu tóc cao cấp (Song song)",
+                        d2, BigDecimal.ZERO));
+                queues.get(1).totalDuration += d2;
+
+                queues.get(2).tasks.add(new ServiceTask(baseTask.serviceId(), "Trang điểm body & Trợ lý trang phục",
+                        d3, BigDecimal.ZERO));
+                queues.get(2).totalDuration += d3;
+            }
+            return queues;
+        }
+
+        // Tham lam LPT: Sắp xếp các dịch vụ giảm dần theo thời gian thực hiện
+        List<ServiceTask> sortedTasks = new ArrayList<>(allTasks);
+        sortedTasks.sort((a, b) -> Integer.compare(b.duration(), a.duration()));
+        for (ServiceTask task : sortedTasks) {
+            ArtistQueue minQueue = queues.stream().min(Comparator.comparingInt(q -> q.totalDuration))
+                    .orElse(queues.get(0));
+            minQueue.tasks.add(task);
+            minQueue.totalDuration += task.duration();
+        }
+
+        // Nếu có thợ rảnh (ví dụ 2 khách mà chọn gói 3 thợ), thợ rảnh hỗ trợ ca dài nhất
+        for (ArtistQueue q : queues) {
+            if (q.tasks.isEmpty()) {
+                ArtistQueue maxQueue = queues.stream().max(Comparator.comparingInt(mq -> mq.totalDuration))
+                        .orElse(null);
+                if (maxQueue != null && maxQueue.totalDuration > 35) {
+                    ServiceTask longest = maxQueue.tasks.get(0);
+                    int originalD = longest.duration();
+                    int assistD = Math.max(20, (int) Math.round(originalD * 0.45));
+                    int reducedD = Math.max(25, (int) Math.round(originalD * 0.60));
+                    maxQueue.tasks.set(0, new ServiceTask(longest.serviceId(),
+                            longest.serviceName() + " (Trang điểm mặt)", reducedD, longest.price()));
+                    maxQueue.totalDuration = maxQueue.totalDuration - originalD + reducedD;
+
+                    q.tasks.add(new ServiceTask(longest.serviceId(),
+                            "Hỗ trợ làm tóc cho " + longest.serviceName(), assistD, BigDecimal.ZERO));
+                    q.totalDuration += assistD;
+                }
+            }
+        }
+        return queues;
+    }
+
+    /**
+     * Tạo mới đơn đặt lịch hẹn trang điểm (Booking Creation)
+     * Xử lý xác thực khách hàng, tính toán chi phí dịch vụ, phụ phí sáng sớm/di
+     * chuyển Mapbox, áp dụng voucher và phân bổ thợ.
+     */
     @Transactional
     public BookingResponse createBooking(UserPrincipal currentUser, BookingRequest request) {
         if (currentUser == null) {
@@ -444,14 +549,16 @@ public class BookingService {
         }
 
         if ("ROLE_ADMIN".equals(currentUser.getRole()) || "ROLE_ARTIST".equals(currentUser.getRole())) {
-            throw new BadRequestException("Tài khoản Quản trị viên (Admin) và Nghệ sĩ (Artist) không được phép thực hiện đặt lịch dịch vụ. Vui lòng sử dụng tài khoản Khách hàng.");
+            throw new BadRequestException(
+                    "Tài khoản Quản trị viên (Admin) và Nghệ sĩ (Artist) không được phép thực hiện đặt lịch dịch vụ. Vui lòng sử dụng tài khoản Khách hàng.");
         }
 
         User customer = userRepository.findById(currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", currentUser.getId()));
 
         if (customer.getRole() == Role.ROLE_ADMIN || customer.getRole() == Role.ROLE_ARTIST) {
-            throw new BadRequestException("Tài khoản Quản trị viên (Admin) và Nghệ sĩ (Artist) không được phép thực hiện đặt lịch dịch vụ. Vui lòng sử dụng tài khoản Khách hàng.");
+            throw new BadRequestException(
+                    "Tài khoản Quản trị viên (Admin) và Nghệ sĩ (Artist) không được phép thực hiện đặt lịch dịch vụ. Vui lòng sử dụng tài khoản Khách hàng.");
         }
 
         if (request.getItems() == null || request.getItems().isEmpty()) {
@@ -468,19 +575,22 @@ public class BookingService {
         if (request.getBookingDate().isEqual(today)) {
             LocalTime minTime = LocalTime.now().plusHours(1);
             if (request.getBookingTime() != null && request.getBookingTime().isBefore(minTime)) {
-                throw new BadRequestException(String.format("Lịch hẹn trong ngày hôm nay phải đặt trước ít nhất 1 tiếng (sớm nhất từ %02d:%02d)", minTime.getHour(), minTime.getMinute()));
+                throw new BadRequestException(String.format(
+                        "Lịch hẹn trong ngày hôm nay phải đặt trước ít nhất 1 tiếng (sớm nhất từ %02d:%02d)",
+                        minTime.getHour(), minTime.getMinute()));
             }
         }
-        if (request.getBookingTime() != null && request.getTargetEndTime() != null 
+        if (request.getBookingTime() != null && request.getTargetEndTime() != null
                 && !request.getTargetEndTime().isAfter(request.getBookingTime())) {
             throw new BadRequestException("Thời gian kết thúc phải sau thời gian bắt đầu");
         }
 
-        boolean isDispatchManaged = request.getDispatchPlan() != null 
+        boolean isDispatchManaged = request.getDispatchPlan() != null
                 || (request.getArtistCount() != null && request.getArtistCount() > 1);
 
         if (!isDispatchManaged && request.getExecutionMode() == ExecutionMode.SINGLE && request.getItems().size() > 1) {
-            throw new BadRequestException("Chế độ SINGLE chỉ cho phép đặt 1 dịch vụ đơn lẻ. Với nhiều dịch vụ, vui lòng chọn phương án điều phối (SAVING, BALANCED, SPEED).");
+            throw new BadRequestException(
+                    "Chế độ SINGLE chỉ cho phép đặt 1 dịch vụ đơn lẻ. Với nhiều dịch vụ, vui lòng chọn phương án điều phối (SAVING, BALANCED, SPEED).");
         }
 
         // 1. Xử lý phân bổ thời gian và thợ cho từng ca
@@ -513,20 +623,20 @@ public class BookingService {
                 throw new BadRequestException("Vui lòng nhập địa chỉ cụ thể khi đặt lịch trang điểm tại nhà (HOME)");
             }
             homeAddress = addrReq.getAddress().trim();
-            double inputDist = (addrReq.getDistanceKm() != null && addrReq.getDistanceKm() > 0) ? addrReq.getDistanceKm() : 5.0;
+            double inputDist = (addrReq.getDistanceKm() != null && addrReq.getDistanceKm() > 0)
+                    ? addrReq.getDistanceKm()
+                    : 5.0;
 
             // Giới hạn bán kính phục vụ tối đa 200km
             if (inputDist > 200.0) {
-                throw new BadRequestException("Studio chỉ nhận phục vụ tận nơi trong bán kính tối đa 200km. Vui lòng chọn địa điểm gần hơn hoặc đặt lịch tại Studio.");
+                throw new BadRequestException(
+                        "Studio chỉ nhận phục vụ tận nơi trong bán kính tối đa 200km. Vui lòng chọn địa điểm gần hơn hoặc đặt lịch tại Studio.");
             }
 
             distanceKm = BigDecimal.valueOf(inputDist).setScale(2, RoundingMode.HALF_UP);
 
             // Bảng phí di chuyển mới:
-            // - Dưới 10km: Miễn phí (0 VNĐ)
-            // - Từ 10km - 20km: 100.000 VNĐ
-            // - Từ 20km - 100km: 200.000 VNĐ
-            // - Từ 100km - 200km: 300.000 VNĐ
+
             double calculatedFee = 0.0;
             if (inputDist < 10.0) {
                 calculatedFee = 0.0;
@@ -553,8 +663,7 @@ public class BookingService {
             try {
                 VoucherApplyResponse vResp = voucherService.calculateVoucherDiscount(
                         VoucherApplyRequest.builder().code(vCode).orderAmount(servicesPrice).build(),
-                        currentUser.getId()
-                );
+                        currentUser.getId());
                 Optional<Voucher> vOpt = voucherRepository.findByCodeIgnoreCase(vCode);
                 if (vOpt.isPresent()) {
                     Voucher v = vOpt.get();
@@ -608,7 +717,8 @@ public class BookingService {
                 contactInfo.append(" | Email: ").append(request.getContactEmail().trim());
             }
             contactInfo.append("]");
-            finalNotes = (finalNotes != null && !finalNotes.isBlank()) ? (finalNotes + "\n" + contactInfo) : contactInfo.toString();
+            finalNotes = (finalNotes != null && !finalNotes.isBlank()) ? (finalNotes + "\n" + contactInfo)
+                    : contactInfo.toString();
         }
 
         // 4. Lưu đơn Booking cha
@@ -680,13 +790,15 @@ public class BookingService {
     }
 
     /**
-     * Tự động quét và hủy các đơn hàng ở trạng thái PENDING_PAYMENT quá 15 phút chưa hoàn tất cọc
+     * Tự động quét và hủy các đơn hàng ở trạng thái PENDING_PAYMENT quá 15 phút
+     * chưa hoàn tất cọc
      */
     @Scheduled(fixedRate = 60000)
     @Transactional
     public void cancelExpiredPendingBookings() {
         LocalDateTime threshold = LocalDateTime.now().minusMinutes(15);
-        List<Booking> expiredBookings = bookingRepository.findByStatusAndCreatedAtBefore(BookingStatus.PENDING_PAYMENT, threshold);
+        List<Booking> expiredBookings = bookingRepository.findByStatusAndCreatedAtBefore(BookingStatus.PENDING_PAYMENT,
+                threshold);
         for (Booking b : expiredBookings) {
             b.setStatus(BookingStatus.CANCELLED);
             String oldNotes = b.getNotes() != null ? b.getNotes() : "";
@@ -696,28 +808,39 @@ public class BookingService {
         }
     }
 
+    /**
+     * Lấy toàn bộ danh sách đơn đặt lịch hẹn cho Quản trị viên (sắp xếp mới nhất
+     * lên đầu, loại bỏ đơn PENDING_PAYMENT)
+     */
     @Transactional
     public List<BookingResponse> getAllBookings() {
         // Quét đơn quá hạn trước
         cancelExpiredPendingBookings();
 
-        // Đơn nào đặt sau thì hiện trước (sắp xếp theo ngày tạo createdAt và ID giảm dần)
+        // Đơn nào đặt sau thì hiện trước (sắp xếp theo ngày tạo createdAt và ID giảm
+        // dần)
         List<Booking> bookings = bookingRepository.findAllByOrderByCreatedAtDescIdDesc();
         for (Booking b : bookings) {
-            if (b.getNotes() != null && (b.getNotes().contains("[Lý do hủy") || b.getNotes().contains("[HOÀN CỌC") || b.getNotes().contains("[ĐÃ HOÀN CỌC"))) {
+            if (b.getNotes() != null && (b.getNotes().contains("[Lý do hủy") || b.getNotes().contains("[HOÀN CỌC")
+                    || b.getNotes().contains("[ĐÃ HOÀN CỌC"))) {
                 if (b.getStatus() != BookingStatus.CANCELLED) {
                     b.setStatus(BookingStatus.CANCELLED);
                     bookingRepository.save(b);
                 }
             }
         }
-        // Trang Admin chỉ hiện đơn đã cọc hoặc chọn thanh toán tại studio (loại bỏ đơn PENDING_PAYMENT thanh toán sau)
+        // Trang Admin chỉ hiện đơn đã cọc hoặc chọn thanh toán tại studio (loại bỏ đơn
+        // PENDING_PAYMENT thanh toán sau)
         return bookings.stream()
                 .filter(b -> b.getStatus() != BookingStatus.PENDING_PAYMENT)
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Lấy danh sách lịch sử đặt lịch của khách hàng hiện tại (Admin có thể xem tất
+     * cả)
+     */
     @Transactional
     public List<BookingResponse> getMyBookings(UserPrincipal currentUser) {
         cancelExpiredPendingBookings();
@@ -731,7 +854,8 @@ public class BookingService {
 
         // Tự động kiểm tra và chuẩn hóa trạng thái CANCELLED cho các đơn có ghi chú hủy
         for (Booking b : bookings) {
-            if (b.getNotes() != null && (b.getNotes().contains("[Lý do hủy") || b.getNotes().contains("[HOÀN CỌC") || b.getNotes().contains("[ĐÃ HOÀN CỌC") || b.getNotes().contains("[Tự động hủy"))) {
+            if (b.getNotes() != null && (b.getNotes().contains("[Lý do hủy") || b.getNotes().contains("[HOÀN CỌC")
+                    || b.getNotes().contains("[ĐÃ HOÀN CỌC") || b.getNotes().contains("[Tự động hủy"))) {
                 if (b.getStatus() != BookingStatus.CANCELLED) {
                     b.setStatus(BookingStatus.CANCELLED);
                     bookingRepository.save(b);
@@ -751,13 +875,21 @@ public class BookingService {
         }
     }
 
+    /**
+     * Cập nhật trạng thái tiến trình của đơn đặt lịch
+     * Ràng buộc: Đối với COMPLETED, bắt buộc đơn hàng phải đã thu đủ 100% tiền từ
+     * khách hàng.
+     */
     @Transactional
     public BookingResponse updateBookingStatus(Long id, BookingStatus newStatus) {
         Booking booking = bookingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", id));
 
-        // Kiểm tra nếu đơn đặt lịch đã bị hủy thì không cho phép chuyển trạng thái khác (đặc biệt là COMPLETED)
-        boolean hasCancelNote = booking.getNotes() != null && (booking.getNotes().contains("[Lý do hủy") || booking.getNotes().contains("[HOÀN CỌC") || booking.getNotes().contains("[ĐÃ HOÀN CỌC") || booking.getNotes().contains("[Tự động hủy"));
+        // Kiểm tra nếu đơn đặt lịch đã bị hủy thì không cho phép chuyển trạng thái khác
+        // (đặc biệt là COMPLETED)
+        boolean hasCancelNote = booking.getNotes() != null
+                && (booking.getNotes().contains("[Lý do hủy") || booking.getNotes().contains("[HOÀN CỌC")
+                        || booking.getNotes().contains("[ĐÃ HOÀN CỌC") || booking.getNotes().contains("[Tự động hủy"));
         if ((booking.getStatus() == BookingStatus.CANCELLED || hasCancelNote) && newStatus != BookingStatus.CANCELLED) {
             throw new BadRequestException("Đơn đặt lịch đã bị hủy, không thể thay đổi trạng thái sang " + newStatus);
         }
@@ -774,9 +906,12 @@ public class BookingService {
             }
             BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
             boolean hasCollectedNote = booking.getNotes() != null && booking.getNotes().contains("[ĐÃ THU ĐỦ TIỀN");
-            boolean isFullyPaid = hasCollectedNote || (totalPrice.compareTo(BigDecimal.ZERO) > 0 && totalPaid.compareTo(totalPrice) >= 0) || (totalPrice.compareTo(BigDecimal.ZERO) == 0);
+            boolean isFullyPaid = hasCollectedNote
+                    || (totalPrice.compareTo(BigDecimal.ZERO) > 0 && totalPaid.compareTo(totalPrice) >= 0)
+                    || (totalPrice.compareTo(BigDecimal.ZERO) == 0);
             if (!isFullyPaid) {
-                throw new BadRequestException("Bạn phải bấm xác nhận 'Đã Thu Tiền' từ khách hàng trước khi hoàn thành đơn đặt lịch!");
+                throw new BadRequestException(
+                        "Bạn phải bấm xác nhận 'Đã Thu Tiền' từ khách hàng trước khi hoàn thành đơn đặt lịch!");
             }
         }
 
@@ -786,6 +921,10 @@ public class BookingService {
         return mapToResponse(updated);
     }
 
+    /**
+     * Admin xác nhận đã thu đủ số tiền thanh toán còn lại (70% hoặc 100% tại
+     * studio)
+     */
     @Transactional
     public BookingResponse collectPayment(Long id) {
         Booking booking = bookingRepository.findById(id)
@@ -826,6 +965,9 @@ public class BookingService {
         return mapToResponse(booking);
     }
 
+    /**
+     * Admin xác nhận đã chuyển khoản hoàn trả tiền cọc cho khách hàng
+     */
     @Transactional
     public BookingResponse confirmRefund(Long id) {
         Booking booking = bookingRepository.findById(id)
@@ -846,7 +988,11 @@ public class BookingService {
         return mapToResponse(saved);
     }
 
-
+    /**
+     * Khách hàng hoặc Admin hủy đơn đặt lịch hẹn
+     * Kiểm tra chính sách hủy: Trước 24h hỗ trợ hoàn tiền cọc, dưới 24h mất cọc
+     * theo quy định.
+     */
     @Transactional
     public BookingResponse cancelBooking(Long id, UserPrincipal currentUser, String reason) {
         Booking booking = bookingRepository.findById(id)
@@ -881,12 +1027,14 @@ public class BookingService {
         return mapToResponse(updated);
     }
 
-    private boolean isArtistAvailableExcludingBooking(Long artistId, LocalDate date, LocalTime startTime, LocalTime endTime, Long excludeBookingId) {
+    private boolean isArtistAvailableExcludingBooking(Long artistId, LocalDate date, LocalTime startTime,
+            LocalTime endTime, Long excludeBookingId) {
         MakeupArtist artist = makeupArtistRepository.findById(artistId).orElse(null);
         if (artist == null || !Boolean.TRUE.equals(artist.getActive())) {
             return false;
         }
-        Optional<ArtistSchedule> scheduleOpt = artistScheduleRepository.findByMakeupArtistIdAndScheduleDate(artistId, date);
+        Optional<ArtistSchedule> scheduleOpt = artistScheduleRepository.findByMakeupArtistIdAndScheduleDate(artistId,
+                date);
         if (scheduleOpt.isPresent()) {
             ArtistSchedule schedule = scheduleOpt.get();
             if (Boolean.TRUE.equals(schedule.getIsDayOff())) {
@@ -905,8 +1053,15 @@ public class BookingService {
         return true;
     }
 
+    /**
+     * Khách hàng chỉnh sửa thông tin đơn đặt lịch (Đổi ngày/giờ hẹn, phong cách
+     * makeup, địa chỉ đón tiếp)
+     * Ràng buộc nghiệp vụ: Chỉ cho phép chỉnh sửa trước thời điểm diễn ra lịch hẹn
+     * tối thiểu 12 tiếng.
+     */
     @Transactional
-    public BookingResponse updateCustomerBooking(Long id, UserPrincipal currentUser, CustomerBookingUpdateRequest request) {
+    public BookingResponse updateCustomerBooking(Long id, UserPrincipal currentUser,
+            CustomerBookingUpdateRequest request) {
         Booking booking = bookingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", id));
 
@@ -919,9 +1074,9 @@ public class BookingService {
 
         boolean isCancelled = booking.getStatus() == BookingStatus.CANCELLED
                 || (booking.getNotes() != null && (booking.getNotes().contains("[Lý do hủy")
-                || booking.getNotes().contains("[HOÀN CỌC")
-                || booking.getNotes().contains("[ĐÃ HOÀN CỌC")
-                || booking.getNotes().contains("[Tự động hủy")));
+                        || booking.getNotes().contains("[HOÀN CỌC")
+                        || booking.getNotes().contains("[ĐÃ HOÀN CỌC")
+                        || booking.getNotes().contains("[Tự động hủy")));
         if (isCancelled) {
             throw new BadRequestException("Không thể chỉnh sửa đơn đặt lịch đã bị hủy");
         }
@@ -930,7 +1085,8 @@ public class BookingService {
             throw new BadRequestException("Không thể chỉnh sửa đơn đặt lịch đang thực hiện hoặc đã hoàn thành");
         }
 
-        // Kiểm tra điều kiện 1: Thời gian bắt đầu của đơn hiện tại phải cách thời điểm hiện tại tối thiểu 12 tiếng
+        // Kiểm tra điều kiện 1: Thời gian bắt đầu của đơn hiện tại phải cách thời điểm
+        // hiện tại tối thiểu 12 tiếng
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime currentStart = LocalDateTime.of(booking.getBookingDate(), booking.getBookingTime());
         long minutesUntilCurrentStart = java.time.Duration.between(now, currentStart).toMinutes();
@@ -947,7 +1103,8 @@ public class BookingService {
             throw new BadRequestException("Giờ bắt đầu phải nằm trong khung giờ phục vụ từ 06:00 đến 21:00");
         }
 
-        // Kiểm tra điều kiện 2: Thời gian hẹn mới cũng phải cách thời điểm hiện tại tối thiểu 12 tiếng
+        // Kiểm tra điều kiện 2: Thời gian hẹn mới cũng phải cách thời điểm hiện tại tối
+        // thiểu 12 tiếng
         LocalDateTime newStart = LocalDateTime.of(newDate, newTime);
         long minutesUntilNewStart = java.time.Duration.between(now, newStart).toMinutes();
         if (!isAdmin && minutesUntilNewStart < 12 * 60) {
@@ -976,7 +1133,8 @@ public class BookingService {
                 long durationMins = (item.getStartTime() != null && item.getEndTime() != null)
                         ? java.time.Duration.between(item.getStartTime(), item.getEndTime()).toMinutes()
                         : (item.getMakeupService() != null && item.getMakeupService().getDuration() != null
-                                ? item.getMakeupService().getDuration() : 60);
+                                ? item.getMakeupService().getDuration()
+                                : 60);
                 if (durationMins <= 0) {
                     durationMins = 60;
                 }
@@ -990,8 +1148,10 @@ public class BookingService {
                 MakeupArtist chosenArtist = null;
                 MakeupArtist currentArtist = item.getMakeupArtist();
 
-                if (currentArtist != null && isArtistAvailableExcludingBooking(currentArtist.getId(), newDate, itemNewStart, itemNewEnd, booking.getId())) {
-                    boolean internalConflict = assignedInSameBooking.getOrDefault(currentArtist.getId(), Collections.emptyList())
+                if (currentArtist != null && isArtistAvailableExcludingBooking(currentArtist.getId(), newDate,
+                        itemNewStart, itemNewEnd, booking.getId())) {
+                    boolean internalConflict = assignedInSameBooking
+                            .getOrDefault(currentArtist.getId(), Collections.emptyList())
                             .stream().anyMatch(slot -> slot[0].isBefore(itemNewEnd) && slot[1].isAfter(itemNewStart));
                     if (!internalConflict) {
                         chosenArtist = currentArtist;
@@ -1000,9 +1160,12 @@ public class BookingService {
 
                 if (chosenArtist == null) {
                     for (MakeupArtist candidate : activeArtists) {
-                        if (isArtistAvailableExcludingBooking(candidate.getId(), newDate, itemNewStart, itemNewEnd, booking.getId())) {
-                            boolean internalConflict = assignedInSameBooking.getOrDefault(candidate.getId(), Collections.emptyList())
-                                    .stream().anyMatch(slot -> slot[0].isBefore(itemNewEnd) && slot[1].isAfter(itemNewStart));
+                        if (isArtistAvailableExcludingBooking(candidate.getId(), newDate, itemNewStart, itemNewEnd,
+                                booking.getId())) {
+                            boolean internalConflict = assignedInSameBooking
+                                    .getOrDefault(candidate.getId(), Collections.emptyList())
+                                    .stream()
+                                    .anyMatch(slot -> slot[0].isBefore(itemNewEnd) && slot[1].isAfter(itemNewStart));
                             if (!internalConflict) {
                                 chosenArtist = candidate;
                                 break;
@@ -1023,7 +1186,7 @@ public class BookingService {
                 bookingItemRepository.save(item);
 
                 assignedInSameBooking.computeIfAbsent(chosenArtist.getId(), k -> new ArrayList<>())
-                        .add(new LocalTime[]{itemNewStart, itemNewEnd});
+                        .add(new LocalTime[] { itemNewStart, itemNewEnd });
             }
 
             booking.setBookingDate(newDate);
@@ -1060,7 +1223,8 @@ public class BookingService {
         }
 
         // Cập nhật địa chỉ nếu là đơn tại nhà (HOME)
-        if (booking.getLocationType() == LocationType.HOME && request.getAddress() != null && !request.getAddress().isBlank()) {
+        if (booking.getLocationType() == LocationType.HOME && request.getAddress() != null
+                && !request.getAddress().isBlank()) {
             BookingAddress bookingAddress = booking.getBookingAddress();
             if (bookingAddress != null) {
                 bookingAddress.setAddress(request.getAddress().trim());
@@ -1084,6 +1248,11 @@ public class BookingService {
         return mapToResponse(saved);
     }
 
+    /**
+     * Lấy thông tin chi tiết của một đơn đặt lịch theo ID
+     * Kiểm tra phân quyền: Khách chỉ xem được đơn của mình, Admin và Artist được
+     * phép xem mọi đơn.
+     */
     @Transactional(readOnly = true)
     public BookingResponse getBookingById(Long id, UserPrincipal currentUser) {
         Booking booking = bookingRepository.findById(id)
@@ -1109,24 +1278,35 @@ public class BookingService {
             throw new BadRequestException("Hệ thống hiện chưa có thợ trang điểm nào sẵn sàng nhận lịch");
         }
 
+        int maxArtists = activeArtists.size();
+        int itemCount = request.getItems() != null ? request.getItems().size() : 1;
+        int defaultSpeedCount = itemCount <= 3 ? Math.min(3, maxArtists) : Math.min(maxArtists, itemCount);
+        int defaultBalancedCount = itemCount <= 3 ? Math.min(2, maxArtists)
+                : Math.max(2, (int) Math.round(defaultSpeedCount * 0.6));
+        if (defaultSpeedCount >= 3 && defaultBalancedCount >= defaultSpeedCount) {
+            defaultBalancedCount = defaultSpeedCount - 1;
+        }
+
         int targetArtistCount = request.getArtistCount() != null && request.getArtistCount() > 0
                 ? request.getArtistCount()
-                : ("SPEED".equalsIgnoreCase(request.getDispatchPlan()) ? 3 : ("BALANCED".equalsIgnoreCase(request.getDispatchPlan()) ? 2 : 1));
-        targetArtistCount = Math.min(targetArtistCount, activeArtists.size());
+                : ("SPEED".equalsIgnoreCase(request.getDispatchPlan()) ? defaultSpeedCount
+                        : ("BALANCED".equalsIgnoreCase(request.getDispatchPlan()) ? defaultBalancedCount : 1));
+        targetArtistCount = Math.min(targetArtistCount, maxArtists);
 
         // Sử dụng thuật toán điều phối thông minh (Smart Dispatch)
         if (targetArtistCount > 1 || request.getDispatchPlan() != null) {
             List<BookingItemTask> tasks = new ArrayList<>();
             for (BookingItemRequest itemReq : request.getItems()) {
                 MakeupService service = makeupServiceRepository.findById(itemReq.getMakeupServiceId())
-                        .orElseThrow(() -> new ResourceNotFoundException("MakeupService", "id", itemReq.getMakeupServiceId()));
+                        .orElseThrow(() -> new ResourceNotFoundException("MakeupService", "id",
+                                itemReq.getMakeupServiceId()));
                 if (!Boolean.TRUE.equals(service.getActive())) {
                     throw new BadRequestException("Dịch vụ '" + service.getServiceName() + "' hiện không hoạt động");
                 }
                 tasks.add(new BookingItemTask(service, itemReq));
             }
 
-            // Sắp xếp dài nhất lên đầu để cân bằng tải
+            // Sắp xếp thợ có thời lượng công việc dài nhất lên đầu để cân bằng tải
             tasks.sort((a, b) -> Integer.compare(b.service.getDuration(), a.service.getDuration()));
 
             LocalTime sessionStart = request.getBookingTime();
@@ -1147,13 +1327,15 @@ public class BookingService {
                 }
             }
 
-            // Sắp xếp các chuyên viên theo thuật toán cân bằng tải công việc trong tháng (Fair Workload Balancing)
+            // Sắp xếp các chuyên viên theo thuật toán cân bằng tải công việc trong tháng
+
             Comparator<MakeupArtist> fairComparator = createFairWorkloadComparator(request.getBookingDate());
             availableArtists.sort(fairComparator);
             busyArtists.sort(fairComparator);
 
             if (availableArtists.isEmpty()) {
-                throw new BadRequestException(String.format("Tất cả chuyên viên đều đã có lịch hẹn kín hoặc bận trong khung giờ %s - %s ngày %s. Quý khách vui lòng chọn khung giờ khác!",
+                throw new BadRequestException(String.format(
+                        "Tất cả chuyên viên đều đã có lịch hẹn kín hoặc bận trong khung giờ %s - %s ngày %s. Quý khách vui lòng chọn khung giờ khác!",
                         sessionStart, sessionEnd, request.getBookingDate()));
             }
 
@@ -1165,7 +1347,8 @@ public class BookingService {
                         .findFirst()
                         .ifPresent(candidateArtists::add);
 
-                // Nếu khách chỉ định thợ nhưng thợ bận, vẫn thêm để validateSlotAvailability báo lỗi rõ ràng về thợ đó
+                // Nếu khách chỉ định thợ nhưng thợ bận, vẫn thêm để validateSlotAvailability
+                // báo lỗi rõ ràng về thợ đó
                 if (candidateArtists.isEmpty()) {
                     activeArtists.stream()
                             .filter(a -> a.getId().equals(request.getDefaultArtistId()))
@@ -1189,7 +1372,8 @@ public class BookingService {
 
             List<MakeupArtist> assignedArtists = new ArrayList<>();
             for (MakeupArtist a : candidateArtists) {
-                if (assignedArtists.size() >= targetArtistCount) break;
+                if (assignedArtists.size() >= targetArtistCount)
+                    break;
                 assignedArtists.add(a);
             }
             if (assignedArtists.isEmpty()) {
@@ -1209,8 +1393,10 @@ public class BookingService {
                             .findFirst()
                             .orElse(null);
                 }
+                // Tham lam chọn thợ đang có thời lượng ngắn nhất
                 if (targetQueue == null) {
-                    targetQueue = queues.stream().min(Comparator.comparingInt(q -> q.totalDuration)).orElse(queues.get(0));
+                    targetQueue = queues.stream().min(Comparator.comparingInt(q -> q.totalDuration))
+                            .orElse(queues.get(0));
                 }
                 targetQueue.tasks.add(task);
                 targetQueue.totalDuration += task.service.getDuration();
@@ -1238,7 +1424,8 @@ public class BookingService {
         for (int i = 0; i < request.getItems().size(); i++) {
             BookingItemRequest itemReq = request.getItems().get(i);
             MakeupService service = makeupServiceRepository.findById(itemReq.getMakeupServiceId())
-                    .orElseThrow(() -> new ResourceNotFoundException("MakeupService", "id", itemReq.getMakeupServiceId()));
+                    .orElseThrow(
+                            () -> new ResourceNotFoundException("MakeupService", "id", itemReq.getMakeupServiceId()));
 
             if (!Boolean.TRUE.equals(service.getActive())) {
                 throw new BadRequestException("Dịch vụ '" + service.getServiceName() + "' hiện không hoạt động");
@@ -1262,14 +1449,16 @@ public class BookingService {
                 slotEnd = slotStart.plusMinutes(service.getDuration());
             }
 
-            Long resolvedArtistId = itemReq.getMakeupArtistId() != null ? itemReq.getMakeupArtistId() : request.getDefaultArtistId();
+            Long resolvedArtistId = itemReq.getMakeupArtistId() != null ? itemReq.getMakeupArtistId()
+                    : request.getDefaultArtistId();
             if (request.getExecutionMode() == ExecutionMode.PARALLEL) {
                 if (resolvedArtistId == null || parallelArtistIds.contains(resolvedArtistId)) {
                     final LocalTime fStart = slotStart;
                     final LocalTime fEnd = slotEnd;
                     resolvedArtistId = activeArtistsSorted.stream()
                             .map(MakeupArtist::getId)
-                            .filter(id -> !parallelArtistIds.contains(id) && checkSlotAvailability(id, request.getBookingDate(), fStart, fEnd))
+                            .filter(id -> !parallelArtistIds.contains(id)
+                                    && checkSlotAvailability(id, request.getBookingDate(), fStart, fEnd))
                             .findFirst()
                             .orElse(activeArtistsSorted.stream()
                                     .map(MakeupArtist::getId)
@@ -1293,7 +1482,9 @@ public class BookingService {
 
             if (request.getExecutionMode() == ExecutionMode.PARALLEL) {
                 if (parallelArtistIds.contains(artistId)) {
-                    throw new BadRequestException("Chế độ PARALLEL yêu cầu mỗi dịch vụ đồng thời phải do một thợ khác nhau thực hiện. Thợ ID: " + artistId + " bị trùng.");
+                    throw new BadRequestException(
+                            "Chế độ PARALLEL yêu cầu mỗi dịch vụ đồng thời phải do một thợ khác nhau thực hiện. Thợ ID: "
+                                    + artistId + " bị trùng.");
                 }
                 parallelArtistIds.add(artistId);
             } else {
@@ -1312,15 +1503,15 @@ public class BookingService {
             MakeupArtist artist,
             LocalTime startTime,
             LocalTime endTime,
-            BigDecimal price
-    ) {}
+            BigDecimal price) {
+    }
 
     private record ServiceTask(
             Long serviceId,
             String serviceName,
             int duration,
-            BigDecimal price
-    ) {}
+            BigDecimal price) {
+    }
 
     private static class ArtistQueue {
         MakeupArtist artist;
@@ -1334,8 +1525,8 @@ public class BookingService {
 
     private record BookingItemTask(
             MakeupService service,
-            BookingItemRequest itemReq
-    ) {}
+            BookingItemRequest itemReq) {
+    }
 
     private static class BookingArtistQueue {
         final MakeupArtist artist;
@@ -1392,27 +1583,35 @@ public class BookingService {
             BigDecimal travelFee,
             String address,
             BigDecimal distanceKm,
-            List<BookingItemResponse> itemResponses
-    ) {
+            List<BookingItemResponse> itemResponses) {
         List<Payment> payments = paymentRepository.findByBookingId(booking.getId());
         BigDecimal totalPaid = BigDecimal.ZERO;
         String paymentMethod = null;
         String paymentStatus = null;
+        boolean hasVnpay = false;
         if (payments != null && !payments.isEmpty()) {
             for (Payment p : payments) {
                 if (p.getStatus() == PaymentStatus.PAID) {
                     totalPaid = totalPaid.add(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
                 }
+                if (p.getPaymentMethod() == PaymentMethod.VNPAY) {
+                    hasVnpay = true;
+                }
             }
             Payment latestPayment = payments.get(payments.size() - 1);
-            paymentMethod = latestPayment.getPaymentMethod() != null ? latestPayment.getPaymentMethod().name() : null;
+            paymentMethod = hasVnpay
+                    ? PaymentMethod.VNPAY.name()
+                    : (latestPayment.getPaymentMethod() != null ? latestPayment.getPaymentMethod().name() : null);
             paymentStatus = latestPayment.getStatus() != null ? latestPayment.getStatus().name() : null;
         }
 
         BigDecimal totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : BigDecimal.ZERO;
         boolean hasCollectedNote = booking.getNotes() != null && booking.getNotes().contains("[ĐÃ THU ĐỦ TIỀN");
-        boolean isFullyPaid = hasCollectedNote || (totalPrice.compareTo(BigDecimal.ZERO) > 0 && totalPaid.compareTo(totalPrice) >= 0) || (totalPrice.compareTo(BigDecimal.ZERO) == 0);
-        BigDecimal remainingToCollect = isFullyPaid ? BigDecimal.ZERO : totalPrice.subtract(totalPaid).max(BigDecimal.ZERO);
+        boolean isFullyPaid = hasCollectedNote
+                || (totalPrice.compareTo(BigDecimal.ZERO) > 0 && totalPaid.compareTo(totalPrice) >= 0)
+                || (totalPrice.compareTo(BigDecimal.ZERO) == 0);
+        BigDecimal remainingToCollect = isFullyPaid ? BigDecimal.ZERO
+                : totalPrice.subtract(totalPaid).max(BigDecimal.ZERO);
 
         return BookingResponse.builder()
                 .id(booking.getId())
@@ -1432,7 +1631,8 @@ public class BookingService {
                 .surcharge(booking.getSurcharge() != null ? booking.getSurcharge() : BigDecimal.ZERO)
                 .discountAmount(booking.getDiscountAmount() != null ? booking.getDiscountAmount() : BigDecimal.ZERO)
                 .voucherId(booking.getVoucher() != null ? booking.getVoucher().getId() : null)
-                .voucherCode(booking.getVoucherCode() != null ? booking.getVoucherCode() : (booking.getVoucher() != null ? booking.getVoucher().getCode() : null))
+                .voucherCode(booking.getVoucherCode() != null ? booking.getVoucherCode()
+                        : (booking.getVoucher() != null ? booking.getVoucher().getCode() : null))
                 .totalPrice(booking.getTotalPrice())
                 .depositAmount(booking.getDepositAmount())
                 .address(address)

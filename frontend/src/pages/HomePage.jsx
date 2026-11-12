@@ -21,7 +21,7 @@ const DEFAULT_ARTISTS = [
     fullName: 'Lê Mai Anh',
     experience: '8 năm kinh nghiệm • Lead Master Artist',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=600',
-    workingHours: '08:00 - 20:00',
+    workingHours: 'Cả ngày',
     workingDays: 'Tất cả các ngày trong tuần',
     specialty: 'Chuyên layout Cô dâu Luxury, Beauty Glam & High Fashion',
   },
@@ -30,7 +30,7 @@ const DEFAULT_ARTISTS = [
     fullName: 'Trần Thảo Linh',
     experience: '6 năm kinh nghiệm • Senior Makeup Artist',
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=600',
-    workingHours: '08:30 - 21:00',
+    workingHours: 'Cả ngày',
     workingDays: 'Thứ 2 - Thứ 7',
     specialty: 'Thành thạo phong cách Douyin, Hàn Quốc mọng nước & Tự nhiên',
   },
@@ -39,7 +39,7 @@ const DEFAULT_ARTISTS = [
     fullName: 'Nguyễn Hoàng Yến',
     experience: '5 năm kinh nghiệm • Pro Makeup Artist',
     avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=600',
-    workingHours: '08:00 - 20:00',
+    workingHours: 'Cả ngày',
     workingDays: 'Tất cả các ngày trong tuần',
     specialty: 'Điểm nhấn Dạ tiệc, Sự kiện sắc sảo & Phong cách cá tính',
   },
@@ -740,13 +740,9 @@ const HomePage = () => {
           {/* Subtle inside glow */}
           <div className="absolute top-0 right-1/4 w-96 h-96 bg-gradient-to-b from-rose-200/30 to-transparent blur-3xl pointer-events-none -z-10" />
 
-          <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
-            <span className="text-xs font-bold tracking-widest text-rose-600 uppercase inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100/70 border border-rose-200/80">
-              <Sparkles className="w-3.5 h-3.5 text-rose-600" />
-              <span>Danh Mục Nổi Bật</span>
-            </span>
-            <h2 className="text-3xl sm:text-5xl font-bold text-slate-900 tracking-tight">
-              Dịch Vụ & Gói Combo Chuyên Nghiệp
+          <div className="text-center max-w-3xl mx-auto mb-12 space-y-4">
+            <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight">
+              Dịch Vụ Nổi Bật
             </h2>
             <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
               Được thiết kế tinh tế nhằm đáp ứng hoàn hảo cho từng phong cách và sự kiện đặc biệt của bạn.
@@ -1157,7 +1153,7 @@ const HomePage = () => {
                   <div className="pt-2 border-t border-slate-100 space-y-2 text-xs text-slate-600">
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span>Giờ nhận lịch: {artist.workingHours || '08:00 - 20:00'}</span>
+                      <span>Giờ nhận lịch: {artist.workingHours && !/\d{2}:\d{2}/.test(artist.workingHours) ? artist.workingHours : 'Cả ngày'}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
@@ -1370,47 +1366,6 @@ const HomePage = () => {
               </div>
             );
           })}
-        </div>
-      </section>
-
-      {/* Banner Ưu đãi Voucher & Hotline CTA */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="relative rounded-[2.5rem] bg-gradient-to-r from-rose-600 via-pink-600 to-rose-700 p-8 sm:p-14 text-white shadow-2xl shadow-rose-950/20 overflow-hidden">
-          {/* Background decorations */}
-          <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-10 w-64 h-64 bg-amber-400/20 rounded-full blur-2xl pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
-            <div className="space-y-4 max-w-2xl text-center lg:text-left">
-              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/20 backdrop-blur-md text-white text-xs font-bold border border-white/30">
-                <Gift className="w-4 h-4 text-amber-200" />
-                <span>Ưu Đãi Đặc Biệt Tháng Này</span>
-              </span>
-              <h2 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-                Tặng Voucher <span className="text-amber-200">10%</span> Cho Khách Đặt Lịch Sớm
-              </h2>
-              <p className="text-rose-100 text-sm sm:text-base leading-relaxed">
-                Nhập mã <span className="font-black px-2 py-0.5 rounded bg-white text-rose-700 mx-1">DUNG10</span> khi đặt lịch trực tuyến hoặc liên hệ trực tiếp qua hotline để nhận tư vấn layout miễn phí cùng chuyên viên.
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center gap-4 shrink-0">
-              <a
-                href="tel:0987654321"
-                className="w-full sm:w-auto px-6 py-4 rounded-full bg-white/15 hover:bg-white/25 border border-white/30 text-white font-bold text-sm backdrop-blur-md flex items-center justify-center gap-2 transition-all hover:scale-105"
-              >
-                <Phone className="w-4 h-4" />
-                <span>Hotline: 0987.654.321</span>
-              </a>
-              <Link
-                to="/booking"
-                className="w-full sm:w-auto px-8 py-4 rounded-full bg-white text-rose-600 hover:bg-rose-50 font-extrabold text-sm shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 transition-all hover:scale-105"
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Đặt Lịch Ngay</span>
-              </Link>
-            </div>
-          </div>
         </div>
       </section>
 

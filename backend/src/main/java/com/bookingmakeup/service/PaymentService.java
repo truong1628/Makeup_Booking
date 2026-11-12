@@ -25,6 +25,10 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+/**
+ * Service xử lý giao dịch thanh toán trực tuyến qua VNPay và thanh toán tiền mặt tại Studio
+ * Phụ trách tạo URL mã hóa HMAC-SHA512, xác thực Webhook IPN, kiểm tra Return URL và tự động gửi email hóa đơn bất đồng bộ.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Calendar, Clock, MapPin, Phone, Sparkles, CheckCircle2, 
   AlertCircle, Briefcase, DollarSign, RefreshCw, Home, Building2, Play, Check,
-  XCircle, X, AlertTriangle, Send
+  XCircle, X, AlertTriangle, Send, Eye, Image as ImageIcon, Palette, ExternalLink
 } from 'lucide-react';
 import { artistService } from '../../services/artistService';
 import { useToast } from '../../context/ToastContext';
@@ -14,6 +14,8 @@ const ArtistDashboardPage = () => {
   const [updatingId, setUpdatingId] = useState(null);
   const [filter, setFilter] = useState('ALL'); // ALL, TODAY, UPCOMING, COMPLETED
   const [cancelModalShift, setCancelModalShift] = useState(null);
+  const [detailModalShift, setDetailModalShift] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
   const [submittingCancel, setSubmittingCancel] = useState(false);
 
@@ -22,6 +24,7 @@ const ArtistDashboardPage = () => {
       setLoading(true);
       const data = await artistService.getMyAssignments();
       setAssignments(data);
+      setDetailModalShift((prev) => prev ? (data.find(d => d.itemId === prev.itemId) || null) : null);
     } catch (err) {
       toast.error('Không thể tải danh sách ca làm việc: ' + (err.message || 'Lỗi kết nối'));
     } finally {
@@ -300,264 +303,190 @@ const ArtistDashboardPage = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="flex flex-col gap-3">
           {filteredAssignments.map((shift) => {
             const isHome = shift.locationType === 'HOME';
             const isFullyPaid = Boolean(shift.isFullyPaid || (shift.remainingToCollect !== undefined && shift.remainingToCollect <= 0));
+            const remainingToCollect = shift.remainingToCollect !== undefined 
+              ? shift.remainingToCollect 
+              : Math.max(0, (shift.totalPrice || 0) - (shift.depositAmount || 0));
+
             return (
               <div
                 key={shift.itemId}
-                className="rounded-2xl bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-6 space-y-5 transition-all shadow-lg hover:shadow-purple-900/10"
+                className="rounded-2xl bg-slate-900 border border-slate-800 hover:border-purple-500/40 p-4 transition-all shadow-md hover:shadow-purple-900/10 space-y-3"
               >
-                {/* Header: Service Name & Status */}
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-xs font-mono font-bold text-purple-400">
-                        #BOOK-{shift.bookingId} (Mục #{shift.itemId})
+                {/* Hàng 1: Mã đơn, Trạng thái, Tên dịch vụ & Giá tiền */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                      #BOOK-{shift.bookingId} (Mục #{shift.itemId})
+                    </span>
+                    {getStatusBadge(shift.bookingStatus)}
+                    {shift.cancelStatus === 'PENDING' && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
+                        <Clock className="w-3 h-3 animate-spin" />
+                        <span>Chờ duyệt hủy</span>
                       </span>
-                      {getStatusBadge(shift.bookingStatus)}
-                    </div>
-                    <h3 className="text-lg font-bold text-white">{shift.serviceName}</h3>
+                    )}
+                    <h3 className="text-base font-bold text-white hover:text-purple-300 transition-colors">
+                      {shift.serviceName}
+                    </h3>
                   </div>
 
-                  <div className="text-right">
-                    <span className="text-xs text-slate-400 block">Đơn giá ca</span>
-                    <span className="text-base font-bold text-rose-400">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-sm sm:text-base font-bold text-rose-400">
                       {Number(shift.price || 0).toLocaleString('vi-VN')} đ
                     </span>
-                  </div>
-                </div>
-
-                {/* Date & Time Slot */}
-                <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-slate-950 border border-slate-800/80">
-                  <div className="flex items-center gap-2.5">
-                    <Calendar className="w-4 h-4 text-purple-400 shrink-0" />
-                    <div>
-                      <span className="text-[11px] text-slate-500 block">Ngày thực hiện</span>
-                      <span className="text-xs font-semibold text-white">{shift.bookingDate}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2.5">
-                    <Clock className="w-4 h-4 text-rose-400 shrink-0" />
-                    <div>
-                      <span className="text-[11px] text-slate-500 block">Khung giờ</span>
-                      <span className="text-xs font-semibold text-white">
-                        {shift.startTime} - {shift.endTime} ({shift.duration} phút)
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Customer Information */}
-                <div className="space-y-2 pt-2 border-t border-slate-800">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                    Thông Tin Khách Hàng
-                  </span>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-300 font-bold flex items-center justify-center text-xs">
-                        {shift.customerName ? shift.customerName.charAt(0).toUpperCase() : 'K'}
-                      </div>
-                      <div>
-                        <span className="text-sm font-semibold text-white block">
-                          {shift.customerName || 'Khách Vãng Lai'}
-                        </span>
-                        <span className="text-xs text-slate-400">Khách Hàng</span>
-                      </div>
-                    </div>
-
-                    {shift.customerPhone && (
-                      <a
-                        href={`tel:${shift.customerPhone}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/10 hover:bg-purple-600/20 text-purple-300 text-xs font-semibold border border-purple-500/20 transition-all"
-                      >
-                        <Phone className="w-3.5 h-3.5 text-purple-400" />
-                        <span>{shift.customerPhone}</span>
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Location Information */}
-                <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      {isHome ? (
-                        <Home className="w-4 h-4 text-amber-400" />
-                      ) : (
-                        <Building2 className="w-4 h-4 text-purple-400" />
-                      )}
-                      <span className="text-xs font-bold text-slate-300">
-                        {isHome ? 'Trang Điểm Tận Nơi (Tại Nhà)' : 'Trang Điểm Tại Studio'}
-                      </span>
-                    </div>
-                    {isHome && shift.distanceKm > 0 && (
-                      <span className="text-[11px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md">
-                        Cách {shift.distanceKm} km
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-slate-400 flex items-start gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
-                    <span>{shift.address}</span>
-                  </p>
-                </div>
-
-                {/* Số tiền artist cần thu & Nút Đã Thu Tiền */}
-                {shift.bookingStatus !== 'CANCELLED' && (
-                  shift.isFullyPaid || (shift.remainingToCollect !== undefined && shift.remainingToCollect <= 0) ? (
-                    <div className="p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                          <CheckCircle2 className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <span className="text-xs text-emerald-300 font-semibold block">Tiền cần thu: 0 đ</span>
-                          <span className="text-[10px] text-emerald-400/80">Khách hàng đã thanh toán đủ đơn đặt lịch</span>
-                        </div>
-                      </div>
-                      <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30 flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Đã Thu Tiền</span>
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-950/40 to-slate-950/90 border border-amber-500/40 flex flex-wrap items-center justify-between gap-3 shadow-md shadow-black/20">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-                          <DollarSign className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <span className="text-[11px] text-slate-400 block font-medium">Số tiền thợ cần thu:</span>
-                          <span className="text-base font-bold font-sans text-amber-400 block leading-tight">
-                            {Number(
-                              shift.remainingToCollect !== undefined 
-                                ? shift.remainingToCollect 
-                                : Math.max(0, (shift.totalPrice || 0) - (shift.depositAmount || 0))
-                            ).toLocaleString('vi-VN')} đ
-                          </span>
-                          <span className="text-[10px] text-slate-500 block mt-0.5">
-                            Tổng đơn: {Number(shift.totalPrice || shift.price || 0).toLocaleString('vi-VN')} đ 
-                            {shift.depositAmount > 0 
-                              ? ` · Đã cọc: ${Number(shift.depositAmount).toLocaleString('vi-VN')} đ` 
-                              : ' · Chưa cọc'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleCollectPayment(
-                          shift.bookingId, 
-                          shift.remainingToCollect !== undefined 
-                            ? shift.remainingToCollect 
-                            : Math.max(0, (shift.totalPrice || 0) - (shift.depositAmount || 0))
-                        )}
-                        disabled={updatingId === shift.bookingId}
-                        className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-                        title="Xác nhận đã nhận tiền từ khách"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Đã Thu Tiền</span>
-                      </button>
-                    </div>
-                  )
-                )}
-
-                {/* Thông báo trạng thái Yêu cầu hủy ca */}
-                {shift.cancelStatus === 'PENDING' && (
-                  <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-xs text-amber-200 flex items-start gap-2.5 shadow-inner">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-amber-300">Yêu cầu hủy ca đang chờ Admin duyệt</span>
-                        <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-mono">ĐANG XỬ LÝ</span>
-                      </div>
-                      <p className="text-amber-200/90 text-xs italic">
-                        "Lý do: {shift.cancelReason || 'Không ghi rõ'}"
-                      </p>
-                      <p className="text-[11px] text-amber-400/80">
-                        Admin sẽ xem xét và điều phối sang thợ khác. Trong thời gian này, bạn vui lòng sẵn sàng nếu đơn không được chấp thuận.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {shift.cancelStatus === 'REJECTED' && (
-                  <div className="p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-xs text-rose-200 flex items-start gap-2.5">
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold block text-rose-300">Admin đã từ chối yêu cầu hủy ca này</span>
-                      <span className="text-[11px] text-rose-300/80">
-                        Vui lòng đến và thực hiện dịch vụ đúng khung giờ đã hẹn với khách hàng.
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Thao tác ca làm việc dành cho Chuyên gia */}
-                <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs">
-                    {shift.bookingStatus === 'CONFIRMED' && (
-                      <span className="text-emerald-400 font-medium">✓ Đã xác nhận - Sẵn sàng thực hiện</span>
-                    )}
-                    {shift.bookingStatus === 'IN_PROGRESS' && (
+                    {shift.bookingStatus !== 'CANCELLED' && (
                       isFullyPaid ? (
-                        <span className="text-sky-400 font-medium animate-pulse flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-sky-400" />
-                          Đã thu tiền · Sẵn sàng hoàn tất ca
+                        <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <Check className="w-3 h-3" />
+                          <span>Đã đủ tiền</span>
                         </span>
                       ) : (
-                        <span className="text-amber-400 font-medium flex items-center gap-1.5">
-                          <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          Phải thu tiền trước khi hoàn thành ca
+                        <span className="text-[11px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <DollarSign className="w-3 h-3" />
+                          <span>Cần thu: {Number(remainingToCollect).toLocaleString('vi-VN')} đ</span>
                         </span>
                       )
                     )}
-                    {shift.bookingStatus === 'COMPLETED' && (
-                      <span className="text-slate-400 font-medium">Ca đã hoàn tất</span>
+                  </div>
+                </div>
+
+                {/* Hàng 2: Dải thông tin gọn gàng (Thời gian, Khách hàng, Địa điểm) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 p-2.5 sm:p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs">
+                  {/* Thời gian */}
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-purple-400 shrink-0" />
+                    <span className="text-slate-400 text-[11px]">Thời gian:</span>
+                    <span className="text-white font-semibold">{shift.bookingDate}</span>
+                    <span className="text-purple-300 font-mono">({shift.startTime} - {shift.endTime})</span>
+                  </div>
+
+                  {/* Khách hàng */}
+                  <div className="flex items-center gap-2 truncate">
+                    {shift.customerImage ? (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImage(shift.customerImage)}
+                        className="w-7 h-7 rounded-lg overflow-hidden border border-purple-500/40 hover:border-purple-400 shrink-0 transition-all cursor-pointer relative group"
+                        title="Xem ảnh chân dung khuôn mặt khách hàng"
+                      >
+                        <img src={shift.customerImage} alt="Ảnh mặt khách" className="w-full h-full object-cover" />
+                      </button>
+                    ) : (
+                      <Phone className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                     )}
-                    {shift.bookingStatus === 'CANCELLED' && (
-                      <span className="text-rose-400 font-medium">Ca đã bị hủy</span>
+                    <span className="text-slate-400 text-[11px]">Khách:</span>
+                    <span className="text-white font-semibold truncate">{shift.customerName || 'Khách vãng lai'}</span>
+                    {shift.customerPhone && (
+                      <a 
+                        href={`tel:${shift.customerPhone}`} 
+                        className="text-sky-300 hover:text-sky-200 hover:underline font-mono ml-auto md:ml-0"
+                        title="Gọi điện cho khách hàng"
+                      >
+                        {shift.customerPhone}
+                      </a>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {/* Địa điểm */}
+                  <div className="flex items-center gap-2 truncate">
+                    {isHome ? (
+                      <Home className="w-4 h-4 text-amber-400 shrink-0" />
+                    ) : (
+                      <Building2 className="w-4 h-4 text-purple-400 shrink-0" />
+                    )}
+                    <span className="text-slate-400 text-[11px]">{isHome ? 'Tận nơi:' : 'Studio:'}</span>
+                    <span className="text-slate-300 truncate" title={shift.address}>{shift.address}</span>
+                    {isHome && shift.distanceKm > 0 && (
+                      <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded font-mono shrink-0">
+                        {shift.distanceKm}km
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Hàng 3: Toolbar Thao tác & Nút Xem Chi Tiết */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+                  <div className="text-xs">
+                    {shift.cancelStatus === 'PENDING' && (
+                      <span className="text-amber-400 italic">
+                        ⏳ Yêu cầu xin hủy đang chờ Admin duyệt ({shift.cancelReason || 'Không ghi rõ'})
+                      </span>
+                    )}
+                    {shift.cancelStatus !== 'PENDING' && shift.bookingStatus === 'CONFIRMED' && (
+                      <span className="text-emerald-400 font-medium">✓ Sẵn sàng thực hiện</span>
+                    )}
+                    {shift.bookingStatus === 'IN_PROGRESS' && (
+                      <span className="text-sky-400 font-medium flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                        Đang thực hiện ca
+                      </span>
+                    )}
+                    {shift.bookingStatus === 'COMPLETED' && (
+                      <span className="text-slate-400 font-medium">✓ Ca đã hoàn tất</span>
+                    )}
+                    {shift.bookingStatus === 'CANCELLED' && (
+                      <span className="text-rose-400 font-medium">✕ Ca đã bị hủy</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 ml-auto">
+                    {/* Nút Xem chi tiết */}
+                    <button
+                      type="button"
+                      onClick={() => setDetailModalShift(shift)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 hover:border-slate-600 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                      title="Xem chi tiết toàn bộ thông tin ca làm việc"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Xem chi tiết</span>
+                    </button>
+
+                    {/* Nút Thu Tiền nếu chưa thanh toán đủ */}
+                    {shift.bookingStatus !== 'CANCELLED' && !isFullyPaid && (
+                      <button
+                        type="button"
+                        onClick={() => handleCollectPayment(shift.bookingId, remainingToCollect)}
+                        disabled={updatingId === shift.bookingId}
+                        className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                        title="Xác nhận đã nhận tiền từ khách hàng"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Thu Tiền</span>
+                      </button>
+                    )}
+
+                    {/* Các nút xử lý ca */}
                     {shift.bookingStatus === 'CONFIRMED' && (
                       <>
-                        {shift.cancelStatus === 'PENDING' ? (
-                          <span className="px-3 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5 animate-spin" />
-                            <span>Chờ Duyệt Hủy</span>
-                          </span>
-                        ) : (
+                        {shift.cancelStatus !== 'PENDING' && (
                           <button
                             type="button"
                             onClick={() => handleOpenCancelModal(shift)}
                             disabled={!shift.canCancel}
-                            className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
                               shift.canCancel
-                                ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:border-rose-500/50'
+                                ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer'
                                 : 'bg-slate-800/60 text-slate-500 border border-slate-800 cursor-not-allowed'
                             }`}
                             title={shift.canCancel ? 'Gửi yêu cầu xin hủy ca cho Admin duyệt' : 'Chỉ được xin hủy trước giờ làm việc ít nhất 2 tiếng'}
                           >
                             <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                            <span>Yêu Cầu Hủy Ca</span>
+                            <span>Xin Hủy</span>
                           </button>
                         )}
 
                         <button
                           onClick={() => handleStartShift(shift.bookingId)}
                           disabled={updatingId === shift.bookingId || shift.cancelStatus === 'PENDING'}
-                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
                           title="Bắt đầu ca làm việc"
                         >
                           <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>Bắt Đầu Thực Hiện</span>
+                          <span>Bắt Đầu</span>
                         </button>
                       </>
                     )}
@@ -567,21 +496,21 @@ const ArtistDashboardPage = () => {
                         <button
                           onClick={() => handleCompleteShift(shift)}
                           disabled={updatingId === shift.bookingId}
-                          className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md shadow-purple-600/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 hover:scale-[1.02] active:scale-95"
+                          className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md shadow-purple-600/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
                           title="Hoàn thành ca làm việc"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
-                          <span>Hoàn Thành Ca</span>
+                          <span>Hoàn Thành</span>
                         </button>
                       ) : (
                         <button
                           type="button"
-                          onClick={() => toast.error('⚠️ Bạn phải bấm xác nhận "Đã Thu Tiền" từ khách hàng trước khi hoàn thành ca làm việc!')}
-                          className="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-400 border border-slate-700 font-semibold text-xs flex items-center gap-1.5 transition-all cursor-not-allowed opacity-80"
-                          title="Chưa thu tiền - Vui lòng bấm 'Đã Thu Tiền' phía trên trước"
+                          onClick={() => toast.error('⚠️ Bạn phải bấm xác nhận "Thu Tiền" từ khách hàng trước khi hoàn thành ca làm việc!')}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 border border-slate-700 font-semibold text-xs flex items-center gap-1.5 cursor-not-allowed opacity-80"
+                          title="Chưa thu tiền - Vui lòng bấm 'Thu Tiền' trước"
                         >
                           <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Cần Thu Tiền Trước</span>
+                          <span>Cần Thu Tiền</span>
                         </button>
                       )
                     )}
@@ -681,6 +610,333 @@ const ArtistDashboardPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Modal Xem Chi Tiết Ca Làm Việc */}
+      {detailModalShift && (() => {
+        const shift = detailModalShift;
+        const isHome = shift.locationType === 'HOME';
+        const isFullyPaid = Boolean(shift.isFullyPaid || (shift.remainingToCollect !== undefined && shift.remainingToCollect <= 0));
+        const remainingToCollect = shift.remainingToCollect !== undefined 
+          ? shift.remainingToCollect 
+          : Math.max(0, (shift.totalPrice || 0) - (shift.depositAmount || 0));
+
+        return (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto animate-in fade-in"
+            onClick={() => setDetailModalShift(null)}
+          >
+            <div 
+              className="relative max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-5 shadow-2xl my-auto max-h-[92vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header Modal */}
+              <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-800">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                      #BOOK-{shift.bookingId} (Mục #{shift.itemId})
+                    </span>
+                    {getStatusBadge(shift.bookingStatus)}
+                    {shift.cancelStatus === 'PENDING' && (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30">
+                        Đang chờ duyệt hủy
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-bold text-white">{shift.serviceName}</h3>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setDetailModalShift(null)}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title="Đóng modal"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Thông tin thời gian & dịch vụ */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Thời Gian Thực Hiện
+                  </span>
+                  <div className="flex items-center gap-2.5 text-xs text-white">
+                    <Calendar className="w-4 h-4 text-purple-400 shrink-0" />
+                    <span>Ngày: <strong>{shift.bookingDate}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2.5 text-xs text-white">
+                    <Clock className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>Khung giờ: <strong>{shift.startTime} - {shift.endTime}</strong> ({shift.duration} phút)</span>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Khách Hàng
+                  </span>
+                  <div className="flex items-center gap-2 text-xs text-white">
+                    <div className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-300 font-bold flex items-center justify-center text-xs shrink-0">
+                      {shift.customerName ? shift.customerName.charAt(0).toUpperCase() : 'K'}
+                    </div>
+                    <span className="font-semibold">{shift.customerName || 'Khách Vãng Lai'}</span>
+                  </div>
+                  {shift.customerPhone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-sky-400 shrink-0" />
+                      <a
+                        href={`tel:${shift.customerPhone}`}
+                        className="text-xs text-sky-400 hover:underline font-mono"
+                      >
+                        {shift.customerPhone} (Bấm để gọi)
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Địa điểm thực hiện */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    {isHome ? (
+                      <Home className="w-4 h-4 text-amber-400" />
+                    ) : (
+                      <Building2 className="w-4 h-4 text-purple-400" />
+                    )}
+                    <span className="text-xs font-bold text-slate-300">
+                      {isHome ? 'Trang Điểm Tận Nơi (Tại Nhà)' : 'Trang Điểm Tại Studio'}
+                    </span>
+                  </div>
+                  {isHome && shift.distanceKm > 0 && (
+                    <span className="text-[11px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md">
+                      Cách {shift.distanceKm} km
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 flex items-start gap-1.5 pt-1">
+                  <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                  <span>{shift.address}</span>
+                </p>
+              </div>
+
+              {/* Yêu cầu Layout, Ghi chú & Ảnh khuôn mặt khách hàng */}
+              {(shift.layout || shift.customerImage || (shift.notes && !shift.notes.includes('[HOÀN CỌC') && !shift.notes.includes('[ĐÃ HOÀN CỌC'))) && (
+                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-2.5 text-xs">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Yêu Cầu Trang Điểm & Ảnh Khuôn Mặt Khách Hàng
+                  </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1.5 flex-1">
+                      {shift.layout && (
+                        <div className="flex items-center gap-2">
+                          <Palette className="w-4 h-4 text-purple-400 shrink-0" />
+                          <span className="text-slate-300">
+                            Layout / Phong cách yêu cầu: <strong className="text-white text-sm">{shift.layout}</strong>
+                          </span>
+                        </div>
+                      )}
+                      {shift.notes && !shift.notes.includes('[HOÀN CỌC') && !shift.notes.includes('[ĐÃ HOÀN CỌC') && (
+                        <div className="text-slate-400 italic bg-slate-900/70 p-2.5 rounded-xl border border-slate-800/80">
+                          Ghi chú của khách: "{shift.notes}"
+                        </div>
+                      )}
+                    </div>
+
+                    {shift.customerImage && (
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-slate-400 text-[11px]">Ảnh khuôn mặt:</span>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImage(shift.customerImage)}
+                          className="relative group w-16 h-16 rounded-2xl overflow-hidden border-2 border-slate-700 hover:border-purple-400 transition-all cursor-pointer shadow-lg"
+                          title="Nhấp để xem ảnh lớn"
+                        >
+                          <img src={shift.customerImage} alt="Ảnh mặt khách" className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ExternalLink className="w-4 h-4 text-white" />
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Bảng kê thanh toán & Tiền cần thu */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Chi Tiết Thanh Toán
+                  </span>
+                  {isFullyPaid ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30 flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      <span>Đã Thanh Toán Đủ</span>
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30">
+                      Chưa Thu Đủ Tiền
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block text-[11px]">Đơn giá ca</span>
+                    <span className="text-white font-bold">{Number(shift.price || 0).toLocaleString('vi-VN')} đ</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block text-[11px]">Tổng đơn hẹn</span>
+                    <span className="text-white font-bold">{Number(shift.totalPrice || shift.price || 0).toLocaleString('vi-VN')} đ</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block text-[11px]">Đã đặt cọc</span>
+                    <span className="text-white font-bold">{Number(shift.depositAmount || 0).toLocaleString('vi-VN')} đ</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block text-[11px]">Số tiền cần thu</span>
+                    <span className={`font-bold ${remainingToCollect > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {Number(remainingToCollect).toLocaleString('vi-VN')} đ
+                    </span>
+                  </div>
+                </div>
+
+                {/* Nút Thu Tiền trong modal nếu chưa thu */}
+                {shift.bookingStatus !== 'CANCELLED' && !isFullyPaid && (
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/60">
+                    <p className="text-xs text-amber-300/80">
+                      Thợ cần thu số tiền còn lại trước khi bấm hoàn tất ca làm việc.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleCollectPayment(shift.bookingId, remainingToCollect)}
+                      disabled={updatingId === shift.bookingId}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50 shrink-0"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Xác Nhận Đã Thu {Number(remainingToCollect).toLocaleString('vi-VN')} đ</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Thông báo Yêu Cầu Hủy Ca nếu có */}
+              {shift.cancelStatus === 'PENDING' && (
+                <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-xs text-amber-200 flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <span className="font-bold text-amber-300 block">Yêu cầu hủy ca đang chờ Admin xét duyệt</span>
+                    <p className="italic">"Lý do: {shift.cancelReason || 'Không ghi rõ'}"</p>
+                    <p className="text-[11px] text-amber-400/80">Admin sẽ điều phối sang thợ khác. Trong thời gian này vui lòng sẵn sàng nếu đơn không được chấp thuận.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Footer: Action Buttons */}
+              <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDetailModalShift(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Đóng
+                </button>
+
+                <div className="flex items-center gap-2">
+                  {shift.bookingStatus === 'CONFIRMED' && (
+                    <>
+                      {shift.cancelStatus !== 'PENDING' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDetailModalShift(null);
+                            handleOpenCancelModal(shift);
+                          }}
+                          disabled={!shift.canCancel}
+                          className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                            shift.canCancel
+                              ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer'
+                              : 'bg-slate-800/60 text-slate-500 border border-slate-800 cursor-not-allowed'
+                          }`}
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Yêu Cầu Hủy Ca</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleStartShift(shift.bookingId)}
+                        disabled={updatingId === shift.bookingId || shift.cancelStatus === 'PENDING'}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Bắt Đầu Thực Hiện</span>
+                      </button>
+                    </>
+                  )}
+
+                  {shift.bookingStatus === 'IN_PROGRESS' && (
+                    isFullyPaid ? (
+                      <button
+                        onClick={() => handleCompleteShift(shift)}
+                        disabled={updatingId === shift.bookingId}
+                        className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md shadow-purple-600/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Hoàn Thành Ca</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => toast.error('⚠️ Bạn phải bấm xác nhận "Thu Tiền" từ khách hàng trước khi hoàn thành ca làm việc!')}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-400 border border-slate-700 font-semibold text-xs flex items-center gap-1.5 cursor-not-allowed opacity-80"
+                      >
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Cần Thu Tiền Trước</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal Preview Ảnh Chân Dung Khách Hàng */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-purple-400" />
+                <span>Ảnh Khuôn Mặt / Chân Dung Khách Hàng</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Đóng"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-hidden rounded-2xl border border-slate-800 flex items-center justify-center bg-black">
+              <img src={previewImage} alt="Face Preview" className="max-h-[68vh] w-auto object-contain" />
+            </div>
+            <p className="text-[11px] text-slate-400 text-center">
+              Chuyên viên trang điểm dựa vào ảnh chân dung để thẩm định tone da và chuẩn bị layout phù hợp.
+            </p>
           </div>
         </div>
       )}
